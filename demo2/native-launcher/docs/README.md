@@ -51,6 +51,7 @@
 | `98-p25-batch4-ranking.md` | **P2.5 Batch 4**：Ranking v2（D02 权重集中+版本化配置回退 + D03 ScoreParts 同源解释 + D05 质量语料回归） | ✅ 687 tests |
 | `99-p25-batch5-ef-closure.md` | **P2.5 收口**：E03/E04 并发 stress + supersede race + E05 FTS 恢复 + F（G14 P2.5 conformance 入 gate，G01~G14 PASS）；Pinyin 推迟 | ✅ 690 tests |
 | `100-p26-batch1-graph.md` | **P2.6 Batch 1**：Workflow 2.0 图模型 + DAG 验证器（A01/A02，DAG-only 政策） | ✅ 701 tests |
+| `101-p27-batch1-ai-contract.md` | **P2.7 Batch 1**：评审（P2.6 依赖裁决）+ AI Contract v1（P27-001：Intent/PlanStep/AgentProposal/RiskLevel，fail-closed 校验） | ✅ 705 tests |
 
 ## 权威文档（不在本目录）
 

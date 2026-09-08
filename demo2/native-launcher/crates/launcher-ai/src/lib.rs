@@ -8,6 +8,7 @@
 //! confirmation state or the credential store (LLM-ARCH-001..005).
 
 pub mod agent;
+pub mod agent_contract;
 pub mod llm;
 pub mod planner;
 pub mod prompt;
