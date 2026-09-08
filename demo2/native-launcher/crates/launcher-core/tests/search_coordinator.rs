@@ -54,13 +54,6 @@ impl Provider for MockProvider {
 }
 
 impl MockProvider {
-    fn set_last_error(&mut self, _msg: String) {
-        // Provider::take_last_error default returns None unless the trait
-        // stores one; mirror the host convention via a compile-time probe:
-        // the coordinator reads take_last_error(), so use its default hook by
-        // simply not relying on it here (err path asserted via panic test).
-        let _ = _msg;
-    }
 }
 
 fn coord(max_parallelism: usize) -> SearchCoordinator {

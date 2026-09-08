@@ -422,6 +422,26 @@ def main():
     steps.append(s := Step("G13", "P2.4 foundation conformance"))
     timed(s, g_p24)
 
+    # ---- Gate 14: P2.5 Search Intelligence conformance (P2.5-F04).
+    def g_p25(step):
+        suites = [
+            ["cargo", "test", "-p", "launcher-search"],
+            ["cargo", "test", "-p", "launcher-core", "--test", "search_coordinator"],
+            ["cargo", "test", "-p", "launcher-core", "--test", "p25_stress"],
+            ["cargo", "test", "-p", "launcher-indexer", "--test", "fts_schema"],
+        ]
+        failures = []
+        for cmd in suites:
+            r = run(cmd, timeout=1200)
+            if r.returncode != 0:
+                failures.append(" ".join(cmd[2:]))
+        if failures:
+            return "FAIL", "failed suites: " + "; ".join(failures)
+        return "PASS", f"{len(suites)} P2.5 conformance suites green (contract/coordinator/stress/fts)"
+
+    steps.append(s := Step("G14", "P2.5 search intelligence conformance"))
+    timed(s, g_p25)
+
     # ---- Gate 12: Evidence / Manifest / Release Artifact Closure (P2.3-H).
     # Package the dist zip, seal evidence (SHA-256 of the release artifacts),
     # then freeze the manifest with the evidence inline. The manifest IS the
