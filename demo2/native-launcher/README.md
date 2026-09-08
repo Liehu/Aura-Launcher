@@ -7,7 +7,8 @@ boundaries; plugin processes are spawned on demand and shut down when idle.
 ## 完成状态（2026-09-08，1.0 RC1 → GA Closure）
 
 **Native Launcher 1.0.0 RC1**：核心产品完成、核心架构冻结、平台基础设施完成。
-当前权威基线：**623 tests 全绿 / zero warnings / topology 17 crates + 8 apps /
+当前权威基线：**P2.4 进行中（见 docs/history/）** / zero warnings / topology
+17 crates + 9 apps /
 adversarial S0=S1=S2=0 / Release Gate G01~G12 PASS / 30min 资源 soak PASS /
 10,000 次 show/hide soak PASS / hotkey→popup P50 307µs · P95 19.7ms（目标
 20ms/35ms）**。逐条验收基线见 `demo2/files2/97-launcher-1.0-final-audit.md`
@@ -19,7 +20,7 @@ GA 前必须项 + P2.4 正式推迟清单）；里程碑全景见 `docs/PROJECT-
 
 | 里程碑 | 状态 | 说明 |
 |---|---|---|
-| M0 基础工程 | ✅ | workspace 17 crates + 8 apps、CI、AGENTS/ADR/文档 |
+| M0 基础工程 | ✅ | workspace（见 ARCHITECTURE.md）、CI、AGENTS/ADR/文档 |
 | M1 Launcher Core | ✅ | 热键（可配置）、popup、command、action、托盘常驻 |
 | M2 Search | ✅ | 应用（Start Menu + Uninstall 注册表）、文件索引（21 万条实测）、最近文件 |
 | M3 Context | ✅ | **MVP2.1 完成**：Explorer 当前目录（IShellWindows COM）→ ContextSnapshot → Context-aware Provider → Quick Switch + Open Terminal Here / Copy Path → Action，GUI 端到端验证通过 |
@@ -126,6 +127,7 @@ cargo run -p launcher-bench check    # fail on >10% regression
 | `apps/calculator-plugin` | calculator external plugin (math queries) |
 | `apps/example-testplugins` | contract-test plugins (normal/slow/crash/malformed/flood) |
 | `apps/launcher-bench` | perf baseline harness |
+| `apps/launcher-plugin-cli` | plugin dev CLI (init/validate/package/install/uninstall/run/inspect, P2.4-D) |
 
 ## Test coverage vs. test plan
 

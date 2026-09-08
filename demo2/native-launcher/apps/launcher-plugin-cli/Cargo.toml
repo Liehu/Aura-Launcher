@@ -1,0 +1,14 @@
+[package]
+name = "launcher-plugin-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "launcher-plugin"
+path = "src/main.rs"
+
+[dependencies]
+launcher-domain = { workspace = true }
+launcher-plugin-host = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }

@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-08（**P2.4 Batch 2**，见 `docs/history/92-p24-batch2-index.md`；Batch 1 见 91 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：642 tests 全绿 / zero warnings / topology 17 crates + 8 apps / S0=S1=S2=0 / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-08（**P2.4 Batch 3**，见 `docs/history/93-p24-batch3-cli.md`；Batch 1/2 见 91/92 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：654 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -27,7 +27,7 @@ Producer (UI/Plugin/Workflow/AI/MCP)
      Effect（system.* 经 OS；plugin.* 经 PluginBroker；mcp.* 经 McpExecutor 预留）
 ```
 
-# 2. Workspace 布局（17 crates + 8 apps）
+# 2. Workspace 布局（17 crates + 9 apps）
 
 | 成员 | 职责 |
 |---|---|
@@ -266,11 +266,16 @@ P2.4-B     File Index Maintenance 2.0                   ✅ Batch 2
             B02 watcher 重注册有界退避 + B05 健康模型
             全字段 + B06 soak —— 见 92 号；B03 DirtyRoot
             P2.1-B 已有)
-P2.4-C     Plugin Control Plane 2.0                     ◐
-           (C02 trust 阶梯 + C03 capability 决策持久化 ✅
-            91号；C04 quarantine/ C05 backup-restore ✅ 89号；
-            C01 lifecycle 整合 / C06 诊断 ⏳)
-P2.4-D/E/F SDK CLI+诊断 / Release Closure                 ⏳ 未开始
+P2.4-C     Plugin Control Plane 2.0                     ✅
+           (C01 installation revision + C02 trust 阶梯 +
+            C03 capability 决策 + C04 quarantine +
+            C05 backup-restore + C06 结构化诊断
+            —— 89/91/93 号)
+P2.4-D     Plugin SDK / CLI                             ✅ Batch 3
+           (launcher-plugin 新 app：init/validate/
+            package/install/uninstall/run/inspect，
+            staged install fail-closed —— 93 号)
+P2.4-E/F   Dev 诊断接线 / Release Closure               ⏳ 未开始
 ```
 
 # 7.5 P2.1/P2.2 文档归档（review 82 §26 采纳）

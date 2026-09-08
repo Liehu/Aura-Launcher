@@ -2885,6 +2885,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "launcher-plugin-cli"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "launcher-domain",
+ "launcher-plugin-host",
+ "serde_json",
+]
+
+[[package]]
 name = "launcher-plugin-host"
 version = "1.0.0"
 dependencies = [

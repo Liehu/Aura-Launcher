@@ -43,6 +43,7 @@
 | `90-ga-closure.md` | **1.0 GA Closure**：GA-1/2/3/4/5/7 完成（文档统一/hotkey P50 307µs/10k UI soak/indexer crash 注入/CI/released manifest）；GA-6 签名暂缓 | ✅ gate 全 PASS |
 | `91-p24-batch1-catalog.md` | **P2.4 Batch 1**：Application Catalog 2.0（A01 身份/A02 schema v2/A03 reconcile/A04 lifecycle/A05 权威读路径）+ C02 trust/C03 capability 决策 | ✅ 638 tests |
 | `92-p24-batch2-index.md` | **P2.4 Batch 2**：File Index 2.0（B01/B04 root 状态机 + B02 watcher 重注册退避 + B05 健康模型 + B06 soak）+ A06 catalog 恢复 conformance | ✅ 642 tests |
+| `93-p24-batch3-cli.md` | **P2.4 Batch 3**：C01 installation revision + C06 结构化诊断 + launcher-plugin CLI（D01-D05，新 app） | ✅ 654 tests |
 
 ## 权威文档（不在本目录）
 

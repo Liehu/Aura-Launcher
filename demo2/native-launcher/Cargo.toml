@@ -26,6 +26,7 @@ members = [
     "apps/calculator-plugin",
     "apps/calculator-plus",
     "apps/launcher-bench",
+        "apps/launcher-plugin-cli",
 ]
 
 [workspace.package]

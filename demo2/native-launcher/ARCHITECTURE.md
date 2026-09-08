@@ -57,6 +57,7 @@ apps/launcher-indexer-service (独立索引进程, stdio JSON-RPC)
 apps/example-echo-plugin, apps/calculator-plugin、calculator-plus、example-mcp-server
 - `crates/launcher-workflow`、`crates/launcher-ai`（P0-D LLM Planner：LlmProvider + 严格 schema + catalog 精确绑定——proposal-only）、`crates/launcher-runtime`（P0-A 外部进程生命周期：spawn / Job Object / bounded IO / shutdown / reap——不含协议与授权语义）、`crates/launcher-mcp`（MCP Adapter，ADR-0018）：Workflow Runner（WORKFLOW-CONTRACT-v0.1 / ADR-0015，orchestration only）, apps/example-testplugins (示例插件/契约测试 binaries)
 apps/launcher-bench (性能基线 harness)
+apps/launcher-plugin-cli (插件开发 CLI, P2.4-D: init/validate/package/install/uninstall/run/inspect)
 ```
 
 ## Ownership

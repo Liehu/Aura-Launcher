@@ -43,6 +43,19 @@ impl TrustState {
     }
 }
 
+/// P2.4-C01: the lifecycle slice of one plugin in a single view (spec §6.1).
+/// Trust/capability layers persist in their own columns/tables; this record
+/// carries them together with the monotonic installation revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginLifecycleRecord {
+    pub plugin_id: String,
+    pub enabled: bool,
+    pub quarantined: bool,
+    pub protocol_failures: u32,
+    pub trust: TrustState,
+    pub installation_revision: u64,
+}
+
 /// P2.4-C03 capability decisions (spec §6.3): unset must fail closed for
 /// protected capabilities. Only the explicit host decision API mutates a
 /// decision — manifest/AI/MCP metadata never can.
@@ -217,7 +230,8 @@ impl PluginRegistry {
                 quarantined   INTEGER NOT NULL DEFAULT 0,
                 failures      INTEGER NOT NULL DEFAULT 0,
                 updated_at    INTEGER NOT NULL,
-                trust         TEXT NOT NULL DEFAULT 'unknown'
+                trust         TEXT NOT NULL DEFAULT 'unknown',
+                revision      INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS plugin_capabilities (
                 plugin_id  TEXT NOT NULL,
@@ -251,6 +265,22 @@ impl PluginRegistry {
                 "ALTER TABLE plugins ADD COLUMN trust TEXT NOT NULL DEFAULT 'unknown';",
             );
         }
+        let has_revision = conn
+            .prepare("PRAGMA table_info(plugins)")
+            .map(|mut stmt| {
+                let names: Result<Vec<String>, _> = stmt
+                    .query_map([], |r| r.get::<_, String>(1))?
+                    .collect();
+                names.map(|cols| cols.iter().any(|c| c == "revision"))
+            })
+            .unwrap_or(Ok(false))
+            .unwrap_or(false);
+        if !has_revision {
+            tracing::info!(to = 3, "plugin registry schema migration (revision column)");
+            let _ = conn.execute_batch(
+                "ALTER TABLE plugins ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;",
+            );
+        }
     }
 
     /// Lifecycle state for one plugin; unknown plugins default to
@@ -278,9 +308,9 @@ impl PluginRegistry {
     pub fn set_enabled(&self, plugin_id: &str, enabled: bool) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().expect("registry lock");
         conn.execute(
-            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at)
-             VALUES (?1, ?2, 0, 0, ?3)
-             ON CONFLICT(plugin_id) DO UPDATE SET enabled = ?2, updated_at = ?3",
+            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, revision)
+             VALUES (?1, ?2, 0, 0, ?3, 1)
+             ON CONFLICT(plugin_id) DO UPDATE SET enabled = ?2, updated_at = ?3, revision = revision + 1",
             params![plugin_id, enabled as i64, now_ms()],
         )?;
         drop(conn);
@@ -295,11 +325,11 @@ impl PluginRegistry {
     pub fn record_failure(&self, plugin_id: &str) -> Result<bool, rusqlite::Error> {
         let conn = self.conn.lock().expect("registry lock");
         conn.execute(
-            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at)
-             VALUES (?1, 1, 0, 1, ?2)
+            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, revision)
+             VALUES (?1, 1, 0, 1, ?2, 1)
              ON CONFLICT(plugin_id) DO UPDATE SET
                failures = failures + 1, updated_at = ?2,
-               quarantined = (failures + 1) >= ?3",
+               quarantined = (failures + 1) >= ?3, revision = revision + 1",
             params![plugin_id, now_ms(), QUARANTINE_THRESHOLD],
         )?;
         let q: i64 = conn.query_row(
@@ -359,9 +389,9 @@ impl PluginRegistry {
     pub fn set_trust(&self, plugin_id: &str, trust: TrustState) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().expect("registry lock");
         conn.execute(
-            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, trust)
-             VALUES (?1, 1, 0, 0, ?2, ?3)
-             ON CONFLICT(plugin_id) DO UPDATE SET trust = ?3, updated_at = ?2",
+            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, trust, revision)
+             VALUES (?1, 1, 0, 0, ?2, ?3, 1)
+             ON CONFLICT(plugin_id) DO UPDATE SET trust = ?3, updated_at = ?2, revision = revision + 1",
             params![plugin_id, now_ms(), trust.as_str()],
         )?;
         drop(conn);
@@ -374,11 +404,12 @@ impl PluginRegistry {
     pub fn note_manifest_observed(&self, plugin_id: &str) -> Result<(), rusqlite::Error> {
         let conn = self.conn.lock().expect("registry lock");
         conn.execute(
-            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, trust)
-             VALUES (?1, 1, 0, 0, ?2, 'known')
+            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, trust, revision)
+             VALUES (?1, 1, 0, 0, ?2, 'known', 1)
              ON CONFLICT(plugin_id) DO UPDATE SET
                trust = CASE WHEN trust = 'unknown' THEN 'known' ELSE trust END,
-               updated_at = ?2",
+               updated_at = ?2,
+               revision = revision + 1",
             params![plugin_id, now_ms()],
         )?;
         drop(conn);
@@ -419,6 +450,37 @@ impl PluginRegistry {
         drop(conn);
         self.refresh_backup();
         Ok(())
+    }
+
+    /// P2.4-C01: the full lifecycle record for one plugin — the lifecycle
+    /// state layers (spec §6.1) in one read. Unknown plugins return the safe
+    /// defaults. `installation_revision` increments on EVERY persisted
+    /// lifecycle mutation, giving cache/diagnostics a monotonic change counter.
+    pub fn lifecycle_record(&self, plugin_id: &str) -> PluginLifecycleRecord {
+        let conn = self.conn.lock().expect("registry lock");
+        conn.query_row(
+            "SELECT enabled, quarantined, failures, trust, revision
+             FROM plugins WHERE plugin_id = ?1",
+            params![plugin_id],
+            |r| {
+                Ok(PluginLifecycleRecord {
+                    plugin_id: plugin_id.to_string(),
+                    enabled: r.get::<_, i64>(0)? != 0,
+                    quarantined: r.get::<_, i64>(1)? != 0,
+                    protocol_failures: r.get::<_, i64>(2)? as u32,
+                    trust: TrustState::parse(&r.get::<_, String>(3)?),
+                    installation_revision: r.get::<_, i64>(4)? as u64,
+                })
+            },
+        )
+        .unwrap_or(PluginLifecycleRecord {
+            plugin_id: plugin_id.to_string(),
+            enabled: true,
+            quarantined: false,
+            protocol_failures: 0,
+            trust: TrustState::Unknown,
+            installation_revision: 0,
+        })
     }
 
     fn refresh_backup(&self) {
@@ -565,6 +627,34 @@ mod tests {
             assert_eq!(r.capability_decision("p1", "filesystem.read"), CapDecision::Allow);
             assert_eq!(r.capability_decision("p1", "network"), CapDecision::Deny);
             assert_eq!(r.capability_decision("p1", "shell.execute"), CapDecision::Unset);
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// P2.4-C01: installation revision is monotonic across lifecycle
+    /// mutations and persists across reopen.
+    #[test]
+    fn installation_revision_monotonic_and_persistent() {
+        let dir = scratch_dir("reg_rev");
+        let db = dir.join("plugins.db");
+        {
+            let r = PluginRegistry::open(&db).unwrap();
+            assert_eq!(r.lifecycle_record("p1").installation_revision, 0);
+            r.set_enabled("p1", false).unwrap();
+            let rev1 = r.lifecycle_record("p1").installation_revision;
+            assert!(rev1 >= 1);
+            r.record_failure("p1").unwrap();
+            r.set_trust("p1", TrustState::Trusted).unwrap();
+            let rec = r.lifecycle_record("p1");
+            assert!(rec.installation_revision > rev1, "revision monotonic");
+            assert_eq!(rec.trust, TrustState::Trusted);
+            assert!(!rec.enabled);
+        }
+        {
+            let r = PluginRegistry::open(&db).unwrap();
+            let rec = r.lifecycle_record("p1");
+            assert!(rec.installation_revision >= 3, "revision persists across reopen");
+            assert_eq!(rec.trust, TrustState::Trusted);
         }
         std::fs::remove_dir_all(&dir).ok();
     }
