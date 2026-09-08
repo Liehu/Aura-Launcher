@@ -26,8 +26,19 @@ pub struct IndexedFile {
     pub modified_ms: i64,
 }
 
+/// P25-C06 content-index extension point: explicitly DISABLED for P2.5
+/// (spec C01 forbidden list: no default content indexing). When a future
+/// phase enables it, the FTS schema gains a `content` column and the
+/// observation pipeline grows an extractor hook; content hits route through
+/// the same metadata-authoritative contract and the same LIKE fallback.
+pub const CONTENT_INDEX_ENABLED: bool = false;
+
 pub struct Indexer {
     conn: Connection,
+    /// P25-C01: FTS5 accelerator availability (false when the SQLite build
+    /// lacks FTS5 or the index is corrupt beyond repair — search then falls
+    /// back to LIKE, C05).
+    fts_available: bool,
 }
 
 /// Maximum number of files indexed per `rebuild` call, as a safety bound.
@@ -69,18 +80,18 @@ impl Indexer {
         // foreground history writes on other connections — wait instead of
         // surfacing SQLITE_BUSY to the caller.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        Self::init_schema(&conn)?;
-        Ok(Self { conn })
+        let fts_available = Self::init_schema(&conn)?;
+        Ok(Self { conn, fts_available })
     }
 
     pub fn in_memory() -> Result<Self, IndexError> {
         let conn = Connection::open_in_memory()?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        Self::init_schema(&conn)?;
-        Ok(Self { conn })
+        let fts_available = Self::init_schema(&conn)?;
+        Ok(Self { conn, fts_available })
     }
 
-    fn init_schema(conn: &Connection) -> Result<(), IndexError> {
+    fn init_schema(conn: &Connection) -> Result<bool, IndexError> {
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY);
@@ -125,7 +136,54 @@ impl Indexer {
             "ALTER TABLE history ADD COLUMN title TEXT NOT NULL DEFAULT ''",
             [],
         );
+        // ---- P25-C01: FTS5 accelerator (idempotent migration) ----
+        // The FTS index is a derived structure over the AUTHORITATIVE
+        // metadata tables (AC-C01-2): a missing/broken FTS index never
+        // blocks metadata reads or writes (search falls back to LIKE, C05).
+        // Content indexing is explicitly NOT enabled (spec C01 forbidden
+        // list / C06 extension point).
+        let fts_available = match conn.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(name, path UNINDEXED)",
+        ) {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!(error = %e, "FTS5 unavailable — file search uses LIKE fallback");
+                false
+            }
+        };
+        Ok(fts_available)
+    }
+
+    /// Rebuild the FTS index from the authoritative metadata (full resync).
+    /// Used after bulk operations and as the corruption recovery path.
+    pub fn rebuild_fts(&self) -> Result<(), IndexError> {
+        if !self.fts_available {
+            return Ok(());
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM files_fts", [])?;
+        tx.execute(
+            "INSERT INTO files_fts(name, path) SELECT name, path FROM files",
+            [],
+        )?;
+        tx.commit()?;
         Ok(())
+    }
+
+    /// Incremental FTS sync for one upsert (caller's transaction).
+    fn fts_upsert(tx: &rusqlite::Transaction, path: &str, name: &str) {
+        if let Err(e) = (|| -> Result<(), rusqlite::Error> {
+            tx.execute("DELETE FROM files_fts WHERE path = ?1", params![path])?;
+            tx.execute("INSERT INTO files_fts(name, path) VALUES (?1, ?2)", params![name, path])?;
+            Ok(())
+        })() {
+            tracing::warn!(error = %e, path = %path, "fts upsert skipped (non-fatal)");
+        }
+    }
+
+    /// Incremental FTS sync for one delete by ACTUAL path (caller's tx).
+    fn fts_delete(tx: &rusqlite::Transaction, path: &str) {
+        let _ = tx.execute("DELETE FROM files_fts WHERE path = ?1", params![path]);
     }
 
     /// Full rebuild: scan `root` recursively (bounded depth) replacing old rows.
@@ -154,11 +212,102 @@ impl Indexer {
         Ok(count as usize)
     }
 
-    /// Case-insensitive filename substring search, bounded results.
+    /// File search: FTS5 prefix-phrase first (P25-C01 accelerator), falling
+    /// back to the LIKE substring scan when FTS yields nothing, is broken
+    /// (one self-healing rebuild attempt, then C05 fallback), or is absent.
+    /// Result contract and bound are identical for both paths.
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<IndexedFile>, IndexError> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
+        // P25-C01/C05: FTS-ranked hits first, LIKE hits merged after (deduped
+        // by id). This preserves the old PATH-fragment matches (FTS indexes
+        // names only) while adding FTS relevance ordering. A broken FTS index
+        // gets ONE self-healing rebuild attempt before the LIKE fallback.
+        let mut fts: Vec<IndexedFile> = Vec::new();
+        if self.fts_available {
+            let mut phrase_text = query.trim().to_lowercase();
+            phrase_text = phrase_text.replace('"', "\"\"");
+            let phrase = format!("\"{}\"", phrase_text);
+            let phrase_prefix = format!("{phrase} *");
+            for attempt in [0, 1] {
+                match self.search_fts_inner(&phrase_prefix, limit) {
+                    Ok(v) if !v.is_empty() => {
+                        fts = v;
+                        break;
+                    }
+                    Ok(_) if attempt == 0 => {
+                        // empty: maybe the FTS index is stale/empty — one
+                        // rebuild then retry before the LIKE pass
+                        let _ = self.rebuild_fts();
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "fts search failed — rebuilding");
+                        let _ = self.rebuild_fts();
+                    }
+                }
+            }
+        }
+        self.search_merged(fts, query, limit)
+    }
+
+    /// Merge FTS-ranked hits with LIKE hits (deduped), preserving total bound.
+    fn search_merged(
+        &self,
+        fts: Vec<IndexedFile>,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<IndexedFile>, IndexError> {
+        let mut out: Vec<IndexedFile> = Vec::with_capacity(limit.min(64));
+        let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        for f in fts {
+            if out.len() >= limit {
+                return Ok(out);
+            }
+            if seen.insert(f.id) {
+                out.push(f);
+            }
+        }
+        for f in self.search_like(query, limit)? {
+            if out.len() >= limit {
+                break;
+            }
+            if seen.insert(f.id) {
+                out.push(f);
+            }
+        }
+        Ok(out)
+    }
+
+    fn search_fts_inner(&self, match_expr: &str, limit: usize) -> Result<Vec<IndexedFile>, IndexError> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT f.id, f.path, f.name, f.is_dir, f.size, f.modified_ms
+             FROM files_fts j JOIN files f ON f.path = j.path
+             WHERE files_fts MATCH ?1
+             ORDER BY rank, f.is_dir, length(f.name), f.path
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![match_expr, limit as i64], |row| {
+            Ok(IndexedFile {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                name: row.get(2)?,
+                is_dir: row.get::<_, i64>(3)? != 0,
+                size: row.get(4)?,
+                modified_ms: row.get(5)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    /// C05: the original LIKE substring scan — authoritative fallback,
+    /// retained unchanged.
+    fn search_like(&self, query: &str, limit: usize) -> Result<Vec<IndexedFile>, IndexError> {
         let pattern = format!("%{}%", escape_like(query.trim().to_lowercase()));
         let mut stmt = self.conn.prepare_cached(
             "SELECT id, path, name, is_dir, size, modified_ms FROM files
@@ -219,9 +368,22 @@ impl Indexer {
                         params![o.path, file_name_of(&o.path), parent_of(&o.path),
                                 o.is_dir as i64, o.size, o.modified_ms],
                     )?;
+                    // P25-C01: FTS sync rides the SAME transaction (atomic
+                    // with metadata; generation semantics untouched)
+                    Self::fts_upsert(&tx, &o.path, &file_name_of(&o.path));
                     upserted += 1;
                 }
                 launcher_domain::VerifiedChange::Delete { normalized_path } => {
+                    // FTS sync BEFORE the metadata delete (join by actual path)
+                    let paths: Vec<String> = {
+                        let mut stmt =
+                            tx.prepare("SELECT path FROM files WHERE lower(path) = ?1")?;
+                        let rows = stmt.query_map(params![normalized_path], |r| r.get(0))?;
+                        rows.collect::<Result<Vec<_>, _>>()?
+                    };
+                    for p in &paths {
+                        Self::fts_delete(&tx, p);
+                    }
                     tx.execute(
                         "DELETE FROM files WHERE lower(path) = ?1",
                         params![normalized_path],

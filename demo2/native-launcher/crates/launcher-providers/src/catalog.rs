@@ -150,6 +150,11 @@ impl CatalogStore {
             );
             "#,
         )?;
+        // P25-C02: FTS accelerator over the catalog — derived structure,
+        // catalog stays source of truth (AC-C02-1). Non-fatal when absent.
+        let _ = conn.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS app_fts USING fts5(name, identity_key UNINDEXED)",
+        );
         Self::migrate(&conn)?;
         Ok(conn)
     }
@@ -286,6 +291,14 @@ impl CatalogStore {
                     ],
                 )?;
             }
+            // P25-C02: FTS rides the same transaction — atomic with the
+            // committed catalog (full resync; catalogs are small)
+            let _ = tx.execute("DELETE FROM app_fts", []);
+            let _ = tx.execute(
+                "INSERT INTO app_fts(name, identity_key)
+                 SELECT display_name, identity_key FROM application",
+                [],
+            );
             tx.execute(
                 "INSERT INTO catalog_meta(key, value) VALUES ('generation', '1')
                  ON CONFLICT(key) DO UPDATE SET
@@ -310,6 +323,84 @@ impl CatalogStore {
             params![identity_key, lifecycle.as_str(), now_ms()],
         )?;
         Ok(())
+    }
+
+    /// P25-C02: FTS search over display names, mapped back to canonical
+    /// catalog entries (AC-C02-2). Falls back to a LIKE scan when FTS is
+    /// unavailable/broken/empty (AC-C02-3). Results are a strict subset of
+    /// `list()` — the catalog remains the source of truth (AC-C02-1).
+    pub fn search_fts(&self, query: &str, limit: usize) -> Result<Vec<CatalogRecord>, CatalogError> {
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().expect("catalog lock");
+        if Self::fts_available(&conn) {
+            let phrase = format!("\"{}\"", q.to_lowercase().replace('"', "\"\""));
+            let sql = format!(
+                "SELECT a.identity_key, a.display_name, a.source, a.launch_path,
+                        a.lifecycle, a.sources, a.entry_path
+                 FROM app_fts j JOIN application a ON a.identity_key = j.identity_key
+                 WHERE app_fts MATCH ?1
+                 ORDER BY rank LIMIT ?2"
+            );
+            if let Ok(mut stmt) = conn.prepare_cached(&sql) {
+                let map = |r: &rusqlite::Row| {
+                    Ok(CatalogRecord {
+                        identity_key: r.get(0)?,
+                        display_name: r.get(1)?,
+                        source: r.get(2)?,
+                        launch_path: r.get(3)?,
+                        lifecycle: CatalogLifecycle::parse(&r.get::<_, String>(4)?),
+                        sources: serde_json::from_str(&r.get::<_, String>(5)?).unwrap_or_default(),
+                        entry_path: r.get(6)?,
+                    })
+                };
+                if let Ok(rows) = stmt.query_map(params![phrase, limit as i64], map) {
+                    let mut out = Vec::new();
+                    for r in rows {
+                        out.push(r?);
+                    }
+                    if !out.is_empty() {
+                        return Ok(out);
+                    }
+                }
+            }
+        }
+        // LIKE fallback: prefix/substring on display_name
+        let pattern = format!("%{}%", q.to_lowercase().replace('%', r"\%").replace('_', r"\_"));
+        let mut stmt = conn.prepare_cached(
+            "SELECT identity_key, display_name, source, launch_path, lifecycle, sources, entry_path
+             FROM application WHERE lower(display_name) LIKE ?1 ESCAPE '\\'
+             ORDER BY length(display_name), identity_key LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![pattern, limit as i64], |r| {
+            Ok(CatalogRecord {
+                identity_key: r.get(0)?,
+                display_name: r.get(1)?,
+                source: r.get(2)?,
+                launch_path: r.get(3)?,
+                lifecycle: CatalogLifecycle::parse(&r.get::<_, String>(4)?),
+                sources: serde_json::from_str(&r.get::<_, String>(5)?).unwrap_or_default(),
+                entry_path: r.get(6)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn fts_available(conn: &rusqlite::Connection) -> bool {
+        conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'app_fts'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n > 0)
+            .unwrap_or(false)
     }
 
     /// All catalog rows, deterministic order.
@@ -501,6 +592,29 @@ mod tests {
         assert_eq!(all[0].lifecycle, CatalogLifecycle::Ready, "v1 rows default ready");
         assert_eq!(all[0].sources, vec!["start-menu".to_string()], "v1 source backfilled");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// P25-C02: FTS search maps back to canonical records and falls back to
+    /// LIKE when FTS yields nothing (substring queries).
+    #[test]
+    fn fts_search_maps_to_canonical_and_falls_back() {
+        let s = store();
+        s.reconcile_observations(&[
+            obs("start-menu", r"C:\Tools\Chrome\chrome.exe", "Chrome"),
+            obs("start-menu", r"C:\Tools\Firefoxirefox.exe", "Firefox"),
+        ])
+        .unwrap();
+        // FTS prefix-phrase path: full-token match maps to the canonical row
+        let hits = s.search_fts("chrome", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].display_name, "Chrome");
+        assert!(hits[0].identity_key.starts_with("win32:"));
+        // LIKE fallback path: substring inside a token never matches FTS
+        let hits = s.search_fts("rome", 10).unwrap();
+        assert_eq!(hits.len(), 1, "LIKE fallback catches substrings");
+        assert_eq!(hits[0].display_name, "Chrome");
+        // no match stays empty
+        assert!(s.search_fts("safari", 10).unwrap().is_empty());
     }
 
     /// A06 conformance: corruption resets lifecycle metadata to safe defaults
