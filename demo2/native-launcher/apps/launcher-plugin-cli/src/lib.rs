@@ -48,6 +48,7 @@ fn dispatch(args: &[String]) -> Result<()> {
         "install" => cmd_install(rest),
         "uninstall" => cmd_uninstall(rest),
         "run" => cmd_run(rest),
+        "replay" => cmd_replay(rest),
         "inspect" => cmd_inspect(rest),
         "help" | "--help" | "-h" | "" => {
             print_help();
@@ -70,6 +71,7 @@ USAGE:
   launcher-plugin install <file.nlpkg> --root <plugins-dir>
   launcher-plugin uninstall <plugin-id> --root <plugins-dir>
   launcher-plugin run <dir> [--query TEXT]
+  launcher-plugin replay <dir> --queries <file> (one query per line)
   launcher-plugin inspect <file.nlpkg|dir>"
     );
 }
@@ -107,18 +109,23 @@ fn cmd_init(args: &[String]) -> Result<()> {
     std::fs::write(
         dir.join("main.py"),
         format!(
-            r#"# {name} — scaffolded by launcher-plugin init (SDK v0.1)
+            r#"# {name} - scaffolded by launcher-plugin init (SDK v0.1)
 import sys
+from pathlib import Path
+
+# point at the Native Launcher Python SDK (plugins/python/launcher_plugin.py)
 sys.path.insert(0, r"<path-to-plugins-python-sdk>")
-from launcher_plugin import Command, Plugin
 
-plugin = Plugin()
+from launcher_plugin import Command, Plugin  # noqa: E402
 
-@plugin.on_query
-def query(text: str):
-    return [Command(id="{id}:echo", title=f"Echo: {{text}}", subtitle="from dev plugin")]
 
-plugin.serve()
+class Dev(Plugin):
+    def query(self, text):
+        return [Command(title=f"Echo: {{text}}", subtitle="from dev plugin")]
+
+
+if __name__ == "__main__":
+    Dev().run()
 "#
         ),
     )?;
@@ -411,7 +418,45 @@ fn cmd_run(args: &[String]) -> Result<()> {
             .ok_or_else(|| anyhow!("run requires a plugin directory"))?,
     );
     let query = arg_value(args, "--query").unwrap_or_else(|| "hello".into());
-    let mut manifest = load_manifest(&dir)?;
+    let n = run_one(&dir, &query)?;
+    println!("({n} result(s))");
+    Ok(())
+}
+
+/// P2.4-E04: replay saved query inputs against a plugin through the same
+/// host-isolated path as `run` — recorded inputs, real protocol.
+fn cmd_replay(args: &[String]) -> Result<()> {
+    let dir = PathBuf::from(
+        args.first()
+            .ok_or_else(|| anyhow!("replay requires a plugin directory"))?,
+    );
+    let queries_file = PathBuf::from(
+        arg_value(args, "--queries")
+            .ok_or_else(|| anyhow!("replay requires --queries <file> (one query per line)"))?,
+    );
+    let raw = std::fs::read_to_string(&queries_file)
+        .with_context(|| format!("reading {}", queries_file.display()))?;
+    let queries: Vec<String> =
+        raw.lines().map(str::to_string).filter(|l| !l.trim().is_empty()).collect();
+    if queries.is_empty() {
+        bail!("replay file has no queries");
+    }
+    let mut total = 0;
+    for (i, query) in queries.iter().enumerate() {
+        // one plugin process per replayed query: the host's spawn/shutdown
+        // path IS the contract under test
+        let n = run_one(&dir, query).map_err(|e| anyhow!("replay[{i}] {query:?}: {e:#}"))?;
+        println!("replay[{i}] {query:?} -> {n} result(s)");
+        total += n;
+    }
+    println!("replayed {} query/queries, {total} result(s) total", queries.len());
+    Ok(())
+}
+
+/// One query against the plugin through the REAL host spawn path
+/// (P2.4-D05: Job Object isolation, bounded IO, protocol handshake).
+fn run_one(dir: &Path, query: &str) -> Result<usize> {
+    let mut manifest = load_manifest(dir)?;
     // dev convenience: allow LAUNCHER_PYTHON for python plugins (same order
     // as the host app's resolution, minus config which belongs to the app)
     if manifest.is_python() && manifest.interpreter.is_none() {
@@ -419,16 +464,14 @@ fn cmd_run(args: &[String]) -> Result<()> {
             manifest.interpreter = Some(PathBuf::from(py));
         }
     }
-    // P2.4-D05: the REAL host spawn path — Job Object isolation, bounded IO,
-    // protocol handshake. Dev tooling gets no side door around isolation.
-    let mut handle = launcher_plugin_host::PluginHandle::spawn(manifest, &dir)?;
-    let results = handle.query(&query)?;
+    let mut handle = launcher_plugin_host::PluginHandle::spawn(manifest, dir)?;
+    let results = handle.query(query)?;
     for c in &results {
         println!("  {}  {}", c.id, c.title);
     }
-    println!("({} result(s))", results.len());
+    let n = results.len();
     handle.shutdown();
-    Ok(())
+    Ok(n)
 }
 
 // ---- inspect ----------------------------------------------------------------

@@ -399,6 +399,29 @@ def main():
     steps.append(s := Step("G11", "documentation consistency"))
     timed(s, g_docs)
 
+    # ---- Gate 13: P2.4 Foundation Conformance (P2.4-F, G-A/G-B/G-C/G-D).
+    # Named conformance suites for the P2.4 subsystems; G02 already runs the
+    # whole workspace, this gate NAMES the foundation contracts in evidence.
+    def g_p24(step):
+        suites = [
+            ["cargo", "test", "-p", "launcher-providers", "--lib", "catalog"],
+            ["cargo", "test", "-p", "launcher-indexer", "--test", "root_lifecycle"],
+            ["cargo", "test", "-p", "launcher-indexer", "--test", "incremental_e2e"],
+            ["cargo", "test", "-p", "launcher-core", "--lib", "plugin_registry"],
+            ["cargo", "test", "-p", "launcher-plugin-cli"],
+        ]
+        failures = []
+        for cmd in suites:
+            r = run(cmd, timeout=1200)
+            if r.returncode != 0:
+                failures.append(" ".join(cmd[2:]))
+        if failures:
+            return "FAIL", "failed suites: " + "; ".join(failures)
+        return "PASS", f"{len(suites)} P2.4 conformance suites green (catalog/index/plugin/cli)"
+
+    steps.append(s := Step("G13", "P2.4 foundation conformance"))
+    timed(s, g_p24)
+
     # ---- Gate 12: Evidence / Manifest / Release Artifact Closure (P2.3-H).
     # Package the dist zip, seal evidence (SHA-256 of the release artifacts),
     # then freeze the manifest with the evidence inline. The manifest IS the

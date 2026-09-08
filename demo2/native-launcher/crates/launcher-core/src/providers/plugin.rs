@@ -17,6 +17,7 @@ use launcher_domain::workflow::WorkflowFailureClass as Class;
 use launcher_domain::{Command, QueryContext};
 use launcher_domain::PluginManifest;
 use launcher_plugin_host::{PluginError, PluginHandle};
+use super::plugin_diagnostics::{global_record, DiagnosticClass, DiagnosticEntry};
 use tracing::warn;
 
 use crate::Provider;
@@ -41,6 +42,34 @@ pub struct PluginProvider {
     disabled: bool,
     /// P2.2-D registry: persists enable/quarantine/failures across restarts.
     registry: Option<std::sync::Arc<super::plugin_registry::PluginRegistry>>,
+}
+
+/// P2.4-E05: PluginError → diagnostic classification (contract failure
+/// taxonomy). Flood surfaces today as Malformed(output-limit) — the host
+/// variant carries the limit in its payload.
+/// P2.4-E01: structured diagnostic for one interaction (observation only —
+/// never an execution path, spec P2.4-E).
+fn record_diag(plugin_id: &str, class: DiagnosticClass, elapsed_ms: u64, results: Option<usize>) {
+    global_record(DiagnosticEntry {
+        plugin_id: plugin_id.to_string(),
+        class,
+        query_id: None,
+        runtime_id: None,
+        protocol_session_id: None,
+        elapsed_ms,
+        frame_size: None,
+        result_count: results,
+    });
+}
+
+fn classify(e: &PluginError) -> DiagnosticClass {
+    match e {
+        PluginError::Spawn(_) => DiagnosticClass::SpawnFailed,
+        PluginError::Timeout(_) | PluginError::NoResponse => DiagnosticClass::Timeout,
+        PluginError::Crashed(_) => DiagnosticClass::Crash,
+        PluginError::Malformed(_) => DiagnosticClass::Malformed,
+        _ => DiagnosticClass::Malformed,
+    }
 }
 
 impl PluginProvider {
@@ -152,8 +181,10 @@ impl Provider for PluginProvider {
         if q.normalized.is_empty() {
             return Vec::new();
         }
+        let t0 = std::time::Instant::now();
         if let Err(e) = self.ensure_running() {
             warn!(plugin = %self.manifest.id, error = %e, "plugin.failed");
+            record_diag(&self.manifest.id, classify(&e), t0.elapsed().as_millis() as u64, None);
             self.last_query_error = Some(e.to_string());
             return Vec::new();
         }
@@ -162,10 +193,17 @@ impl Provider for PluginProvider {
             Ok(cmds) => {
                 self.protocol_failures = 0;
                 self.last_used = Some(Instant::now());
+                record_diag(
+                    &self.manifest.id,
+                    DiagnosticClass::Ok,
+                    t0.elapsed().as_millis() as u64,
+                    Some(cmds.len()),
+                );
                 cmds
             }
             Err(e) => {
                 warn!(plugin = %self.manifest.id, error = %e, "plugin query failed");
+                record_diag(&self.manifest.id, classify(&e), t0.elapsed().as_millis() as u64, None);
                 self.last_query_error = Some(e.to_string());
                 // a query RPC failure is a protocol-level event exactly like
                 // its execute_action counterpart (P2.3-C3): drop the process

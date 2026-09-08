@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-08（**P2.4 Batch 3**，见 `docs/history/93-p24-batch3-cli.md`；Batch 1/2 见 91/92 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：654 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-08（**P2.4 完成**，见 `docs/history/94-p24-batch4-ef-closure.md`；批次 91-93 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：655 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G13 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -275,7 +275,13 @@ P2.4-D     Plugin SDK / CLI                             ✅ Batch 3
            (launcher-plugin 新 app：init/validate/
             package/install/uninstall/run/inspect，
             staged install fail-closed —— 93 号)
-P2.4-E/F   Dev 诊断接线 / Release Closure               ⏳ 未开始
+P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
+           (E01 Provider 失败/成功路径→结构化诊断 +
+            E03 快照落盘 + E04 replay + E05 分类打通
+            —— 94 号)
+P2.4-F     Release Closure                              ✅ Batch 4
+           (G13 "P2.4 foundation conformance" 5 套件
+            入 release_gate；G01~G13 全 PASS —— 94 号)
 ```
 
 # 7.5 P2.1/P2.2 文档归档（review 82 §26 采纳）
@@ -304,7 +310,7 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 617 全绿）
+cargo test --workspace          # 行为回归闸门（当前 655 全绿）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
 python scripts/release_gate.py    # Launcher 1.0 Release Gate（G01~G12 + evidence/manifest）

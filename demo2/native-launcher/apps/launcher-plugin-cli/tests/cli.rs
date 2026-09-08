@@ -182,3 +182,48 @@ fn install_rejects_unknown_contract_version() {
 fn unknown_command_fails() {
     assert_eq!(run_cli(&args(&["definitely-not-a-command"])), 1);
 }
+
+/// P2.4-E04: replay drives real queries through the host spawn path
+/// (requires a Python interpreter like python_sdk_e2e; skipped otherwise).
+#[test]
+fn replay_runs_saved_queries() {
+    // interpreter probe identical in spirit to python_sdk_e2e
+    let py = std::env::var("LAUNCHER_PYTHON").unwrap_or_else(|_| "python".into());
+    let ok = std::process::Command::new(&py)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        eprintln!("skipping: no python interpreter");
+        return;
+    }
+    let dir = scratch("replay");
+    assert_eq!(
+        run_cli(&args(&["init", dir.to_str().unwrap(), "--id", "dev.replay"])),
+        0
+    );
+    // make the scaffold runnable: point the SDK import at the repo SDK
+    let main_py = dir.join("main.py");
+    let sdk = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/python");
+    let body = fs::read_to_string(&main_py).unwrap().replace(
+        r#"<path-to-plugins-python-sdk>"#,
+        &sdk.to_string_lossy(),
+    );
+    fs::write(&main_py, body).unwrap();
+
+    let queries = dir.join("queries.txt");
+    fs::write(&queries, "hello
+world
+").unwrap();
+    let code = run_cli(&args(&[
+        "replay",
+        dir.to_str().unwrap(),
+        "--queries",
+        queries.to_str().unwrap(),
+    ]));
+    assert_eq!(code, 0, "replay through the real host path should succeed");
+    fs::remove_dir_all(&dir).ok();
+}

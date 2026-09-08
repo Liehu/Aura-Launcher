@@ -1716,6 +1716,13 @@ fn main() -> anyhow::Result<()> {
         }
     });
     tray.on_quit_requested(|| {
+        // P2.4-E03: persist the plugin diagnostics snapshot for dev tooling /
+        // support bundles (bounded ring, observation-only data).
+        let dump = launcher_core::providers::plugin_diagnostics::global_dump_json();
+        let path = data_dir().join("plugin-diagnostics.json");
+        if let Err(e) = std::fs::write(&path, dump) {
+            warn!(error = %e, path = %path.display(), "plugin diagnostics dump failed");
+        }
         let _ = slint::quit_event_loop();
     });
     tray.on_workflow_demo_requested({

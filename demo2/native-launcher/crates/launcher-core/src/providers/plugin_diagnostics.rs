@@ -47,6 +47,45 @@ pub struct DiagnosticEntry {
     pub result_count: Option<usize>,
 }
 
+/// P2.4-E01/E03: process-wide diagnostic log shared by all plugin providers.
+/// Capacity-bounded (512 records ≈ a full dev session); snapshot/dump via
+/// [`global_snapshot`] / [`global_dump_json`] never blocks and never executes.
+pub fn global_log() -> &'static std::sync::Mutex<DiagnosticLog> {
+    static LOG: std::sync::OnceLock<std::sync::Mutex<DiagnosticLog>> = std::sync::OnceLock::new();
+    LOG.get_or_init(|| std::sync::Mutex::new(DiagnosticLog::new(512)))
+}
+
+pub fn global_record(entry: DiagnosticEntry) {
+    if let Ok(mut log) = global_log().lock() {
+        log.record(entry);
+    }
+}
+
+pub fn global_snapshot() -> Vec<DiagnosticEntry> {
+    global_log().lock().map(|l| l.snapshot()).unwrap_or_default()
+}
+
+/// E03: deterministic JSON snapshot for dev tooling / support bundles.
+pub fn global_dump_json() -> String {
+    let entries: Vec<serde_json::Value> = global_snapshot()
+        .into_iter()
+        .map(|e| {
+            serde_json::json!({
+                "plugin_id": e.plugin_id,
+                "class": e.class.as_str(),
+                "query_id": e.query_id,
+                "runtime_id": e.runtime_id,
+                "protocol_session_id": e.protocol_session_id,
+                "elapsed_ms": e.elapsed_ms,
+                "frame_size": e.frame_size,
+                "result_count": e.result_count,
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::json!({ "entries": entries }))
+        .unwrap_or_default()
+}
+
 /// Bounded diagnostic ring. Oldest entries fall off; capacity is fixed at
 /// construction (INV: no unbounded collections).
 #[derive(Debug)]
