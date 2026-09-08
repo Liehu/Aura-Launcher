@@ -52,6 +52,7 @@
 | `99-p25-batch5-ef-closure.md` | **P2.5 收口**：E03/E04 并发 stress + supersede race + E05 FTS 恢复 + F（G14 P2.5 conformance 入 gate，G01~G14 PASS）；Pinyin 推迟 | ✅ 690 tests |
 | `100-p26-batch1-graph.md` | **P2.6 Batch 1**：Workflow 2.0 图模型 + DAG 验证器（A01/A02，DAG-only 政策） | ✅ 701 tests |
 | `101-p27-batch1-ai-contract.md` | **P2.7 Batch 1**：评审（P2.6 依赖裁决）+ AI Contract v1（P27-001：Intent/PlanStep/AgentProposal/RiskLevel，fail-closed 校验） | ✅ 705 tests |
+| `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 
 ## 权威文档（不在本目录）
 
