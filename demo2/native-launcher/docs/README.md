@@ -46,6 +46,7 @@
 | `93-p24-batch3-cli.md` | **P2.4 Batch 3**：C01 installation revision + C06 结构化诊断 + launcher-plugin CLI（D01-D05，新 app） | ✅ 654 tests |
 | `94-p24-batch4-ef-closure.md` | **P2.4 收口**：E01-E05 诊断打通/快照落盘/Replay + F（G13 P2.4 conformance 入 gate） | ✅ 655 tests / G01-G13 PASS |
 | `95-p25-batch1-query-intelligence.md` | **P2.5 Batch 1**：Search Contract v2（P25-001）+ Query Normalizer v2（A01）+ Intent Detector（A02）+ 显式 Filter（A03） | ✅ 671 tests |
+| `96-p25-batch2-coordinator.md` | **P2.5 Batch 2**：SearchCoordinator（B01 骨架/B02 有界并发 fan-out/B03 panic 隔离/B04 取消守卫/B06 路由 v0.1） | ✅ 676 tests |
 
 ## 权威文档（不在本目录）
 

@@ -4,6 +4,7 @@ pub mod agent_host;
 pub mod catalog;
 pub mod favorites;
 pub mod providers;
+pub mod search_coordinator;
 pub mod workflow_backend;
 
 use std::path::PathBuf;

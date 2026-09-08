@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-08（**P2.5 Batch 1**，见 `docs/history/95-p25-batch1-query-intelligence.md`；P2.4 完成见 90-94 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：671 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G13 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-08（**P2.5 Batch 2**，见 `docs/history/96-p25-batch2-coordinator.md`；Batch 1 见 95 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：676 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G13 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -283,7 +283,12 @@ P25-001    Search Contract v2                           ✅ Batch 1
             ResultState 冻结 + authority-free 断言 —— 95号)
 P25-A01-A03 Query Normalizer v2 + Intent Detector +
             Explicit Filters（纯函数/确定性/无 I/O）      ✅ Batch 1
-P25-B~F    Coordinator/FTS5/Ranking/Stress/Closure      ⏳ 未开始
+P25-B01-B04  SearchCoordinator（骨架/有界 fan-out/      ✅ Batch 2
+             panic 隔离/取消守卫）+ B06 路由 v0.1
+             （Core::search 保留 sequential 兼容模式，
+              默认切换等 E 线基准）—— 96 号
+P25-B05     Partial Result Contract                     ✅ Batch 2
+P25-C~F     FTS5/Ranking/Stress/Closure                 ⏳ 未开始
 
 P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
            (E01 Provider 失败/成功路径→结构化诊断 +
@@ -320,7 +325,7 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 671 全绿）
+cargo test --workspace          # 行为回归闸门（当前 676 全绿）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
 python scripts/release_gate.py    # Launcher 1.0 Release Gate（G01~G12 + evidence/manifest）
