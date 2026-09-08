@@ -2,6 +2,7 @@
 //! - `app_registry`: registry Uninstall-key application enumeration
 //! - `recent_files`: Windows Recent (`%APPDATA%\Microsoft\Windows\Recent`)
 
+pub mod app_identity;
 pub mod app_registry;
 pub mod catalog;
 pub mod packaged;

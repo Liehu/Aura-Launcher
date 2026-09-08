@@ -303,6 +303,15 @@ impl Core {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
+    /// P2.4-A05: adopt the committed CatalogGeneration as the cache-visible
+    /// application generation, so a catalog reconcile invalidates cached
+    /// application results (cache keys must include every invalidating
+    /// generation).
+    pub fn set_application_generation(&self, gen: u64) {
+        self.application_generation
+            .store(gen, std::sync::atomic::Ordering::SeqCst);
+    }
+
     pub fn register(&mut self, p: Box<dyn Provider>) {
         self.providers.push(p);
     }

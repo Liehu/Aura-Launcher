@@ -88,6 +88,33 @@ impl AppRegistryProvider {
         Self { entries }
     }
 
+    /// P2.4-A05: authoritative catalog read path — the provider is built FROM
+    /// the persisted catalog (already canonical-identity merged at reconcile
+    /// time), never from a synchronous re-discovery on the search path.
+    /// Stable-id rule: `path` keeps the ORIGINAL discovery entry path
+    /// (`CatalogRecord::entry_path`, e.g. the .lnk) so command_ids and the
+    /// history/favorites join are unchanged. Non-ready records (stale/broken)
+    /// are excluded — catalog lifecycle is metadata and must never become a
+    /// candidate on its own (P2.4-A04: metadata != authority).
+    pub fn from_catalog_records(records: &[crate::catalog::CatalogRecord]) -> Self {
+        let entries = records
+            .iter()
+            .filter(|r| r.lifecycle == crate::catalog::CatalogLifecycle::Ready)
+            .map(|r| {
+                let target = PathBuf::from(&r.launch_path);
+                let resolved = is_exe_path(&target).then(|| target.clone());
+                AppEntry {
+                    name: r.display_name.clone(),
+                    path: PathBuf::from(&r.entry_path),
+                    resolved_target: resolved,
+                    merged_sources: r.sources.iter().map(|s| source_static(s)).collect(),
+                    source: source_static(&r.source),
+                }
+            })
+            .collect();
+        Self::from_entries(entries)
+    }
+
     /// Enumerate all sources. Independent sources: one failing source only
     /// logs a WARN.
     pub fn collect_entries() -> Vec<AppEntry> {
@@ -296,6 +323,24 @@ fn display_icon_to_exe(raw: String) -> Option<PathBuf> {
 /// INV-IDENTITY-003 (review 74 §11): identity resolution is PURE — it reads
 /// metadata / parses / normalizes and MUST NOT produce or execute Effects
 /// (no launch, no shell, no network, no install).
+fn is_exe_path(p: &Path) -> bool {
+    p.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+}
+
+/// Map a catalog source id to the provider's 'static source vocabulary.
+/// Unknown ids degrade to "catalog" (never panic, never lose the row).
+fn source_static(s: &str) -> &'static str {
+    match s {
+        "start-menu" => "start-menu",
+        "uninstall" => "uninstall",
+        "packaged" => "packaged",
+        "app-paths" => "app-paths",
+        "portable" => "portable",
+        _ => "catalog",
+    }
+}
+
 fn executable_identity(resolved_target: Option<&std::path::Path>) -> Option<String> {
     let t = resolved_target?.to_string_lossy().to_string();
     t.to_lowercase().ends_with(".exe").then(|| {
@@ -405,6 +450,46 @@ fn dedup(entries: Vec<AppEntry>) -> Vec<AppEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::catalog::{CatalogLifecycle, CatalogRecord};
+
+    fn rec(identity: &str, name: &str, source: &str, launch: &str, entry: &str,
+           lifecycle: CatalogLifecycle, sources: Vec<String>) -> CatalogRecord {
+        CatalogRecord {
+            identity_key: identity.into(),
+            display_name: name.into(),
+            source: source.into(),
+            launch_path: launch.into(),
+            lifecycle,
+            sources,
+            entry_path: entry.into(),
+        }
+    }
+
+    /// P2.4-A05 acceptance: the provider is built FROM catalog records;
+    /// same-identity rows are already merged by reconcile; non-ready
+    /// lifecycle is excluded; entry_path keeps command_ids stable.
+    #[test]
+    fn from_catalog_records_merges_excludes_non_ready_and_preserves_ids() {
+        let records = vec![
+            rec(r"win32:c:\tools\app.exe", "App", "start-menu",
+                r"C:\Tools\App.exe", r"C:\SM\App.lnk",
+                CatalogLifecycle::Ready, vec!["start-menu".into(), "uninstall".into()]),
+            rec(r"win32:c:\tools\stale.exe", "Stale App", "start-menu",
+                r"C:\Tools\stale.exe", r"C:\SM\stale.lnk",
+                CatalogLifecycle::Stale, vec!["start-menu".into()]),
+            rec(r"win32:c:\tools\broken.exe", "Broken App", "start-menu",
+                r"C:\Tools\broken.exe", r"C:\SM\broken.lnk",
+                CatalogLifecycle::Broken, vec!["start-menu".into()]),
+        ];
+        let p = AppRegistryProvider::from_catalog_records(&records);
+        let cmds = p.to_commands();
+        assert_eq!(cmds.len(), 1, "stale/broken records never become candidates");
+        let c = &cmds[0];
+        // stable id: the ORIGINAL entry path (the .lnk), not the resolved target
+        assert_eq!(c.id, r"appreg:C:\SM\App.lnk");
+        // identity target still carries the resolved exe (search identity)
+        assert_eq!(c.target.as_deref(), Some(r"C:\Tools\App.exe"));
+    }
 
     #[test]
     fn display_icon_parsing() {

@@ -81,33 +81,55 @@ fn build_core(
             &roots, 128, 2,
         ));
     }
-    let apps = AppRegistryProvider::from_entries(entries);
-    info!(apps = apps.len(), "application catalog ready");
-    // P2.1-D.1: materialize the merged discovery result into the persistent
-    // Application Catalog BEFORE handing the provider to Core (entries are
-    // still borrowable here).
-    {
-        let catalog_db = db_dir.join("catalog.db");
-        let store = launcher_providers::catalog::CatalogStore::open(&catalog_db)?;
-        let rows: Vec<(String, String, String, String)> = apps
-            .entries()
-            .iter()
-            .map(|e| {
-                let launch = e
-                    .resolved_target
+    // P2.4-A03: discovery output becomes ApplicationObservations; the
+    // catalog merges them into canonical identities (pure, deterministic).
+    use launcher_providers::app_identity::ApplicationObservation;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let observations: Vec<ApplicationObservation> = entries
+        .iter()
+        .map(|e| ApplicationObservation {
+            source_id: e.source.to_string(),
+            source_kind: e.source.to_string(),
+            identity_hint: e.path.display().to_string(),
+            display_name: e.name.clone(),
+            launch_target: Some(
+                e.resolved_target
                     .as_ref()
                     .unwrap_or(&e.path)
                     .display()
-                    .to_string();
-                let id = launcher_domain::normalize_path_identity(&launch);
-                (format!("win32:{id}"), e.name.clone(), e.source.to_string(), launch)
-            })
-            .collect();
-        let (gen, n) = store.reconcile(&rows)?;
+                    .to_string(),
+            ),
+            observed_at: now_ms,
+            ..Default::default()
+        })
+        .collect();
+    let (apps, catalog_generation) = {
+        let catalog_db = db_dir.join("catalog.db");
+        let store = launcher_providers::catalog::CatalogStore::open(&catalog_db)?;
+        let (gen, n) = store.reconcile_observations(&observations)?;
         info!(catalog_generation = gen, entries = n, "application catalog persisted");
-    }
+        // P2.4-A05: the provider is built FROM the committed catalog — the
+        // authoritative read path. Fallback: an unreadable/empty catalog
+        // must not break the app provider (discovery result is still in hand).
+        let from_catalog = store.list().ok().filter(|r| !r.is_empty());
+        match from_catalog {
+            Some(records) => (
+                AppRegistryProvider::from_catalog_records(&records),
+                Some(gen),
+            ),
+            None => (AppRegistryProvider::from_entries(entries), None),
+        }
+    };
+    info!(apps = apps.len(), catalog_authoritative = catalog_generation.is_some(), "application catalog ready");
     core.register(Box::new(apps));
-    core.bump_application_generation();
+    // P2.4-A05: cache invalidation adopts the COMMITTED catalog generation.
+    match catalog_generation {
+        Some(gen) => core.set_application_generation(gen),
+        None => core.bump_application_generation(),
+    }
 
 
 

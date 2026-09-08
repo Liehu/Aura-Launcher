@@ -10,6 +10,7 @@ anyhow = { workspace = true }
 lnk = { version = "0.6", features = ["binwrite", "unstable-save"] }
 png = "0.17"
 rusqlite = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

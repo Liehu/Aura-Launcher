@@ -12,6 +12,66 @@ use std::sync::Mutex;
 
 pub const QUARANTINE_THRESHOLD: u32 = 3;
 
+/// P2.4-C02 trust states (spec §6.2). Trust is PROVENANCE attitude — how the
+/// host regards the plugin's origin — and is orthogonal to `enabled`
+/// (operator decision) and `quarantined` (runtime safety). Discovery of a
+/// manifest can only reach `Known`; `Trusted` requires an explicit host/admin
+/// operation. Manifest metadata can never mutate trust.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TrustState {
+    #[default]
+    Unknown,
+    Known,
+    Trusted,
+}
+
+impl TrustState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TrustState::Unknown => "unknown",
+            TrustState::Known => "known",
+            TrustState::Trusted => "trusted",
+        }
+    }
+
+    fn parse(s: &str) -> TrustState {
+        match s {
+            "known" => TrustState::Known,
+            "trusted" => TrustState::Trusted,
+            _ => TrustState::Unknown,
+        }
+    }
+}
+
+/// P2.4-C03 capability decisions (spec §6.3): unset must fail closed for
+/// protected capabilities. Only the explicit host decision API mutates a
+/// decision — manifest/AI/MCP metadata never can.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CapDecision {
+    #[default]
+    Unset,
+    Allow,
+    Deny,
+}
+
+impl CapDecision {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CapDecision::Unset => "unset",
+            CapDecision::Allow => "allow",
+            CapDecision::Deny => "deny",
+        }
+    }
+
+    fn parse(s: &str) -> CapDecision {
+        match s {
+            "allow" => CapDecision::Allow,
+            "deny" => CapDecision::Deny,
+            _ => CapDecision::Unset,
+        }
+    }
+}
+
 fn backup_path(db_path: &Path) -> PathBuf {
     PathBuf::from(format!("{}.bak", db_path.display()))
 }
@@ -156,7 +216,8 @@ impl PluginRegistry {
                 enabled       INTEGER NOT NULL DEFAULT 1,
                 quarantined   INTEGER NOT NULL DEFAULT 0,
                 failures      INTEGER NOT NULL DEFAULT 0,
-                updated_at    INTEGER NOT NULL
+                updated_at    INTEGER NOT NULL,
+                trust         TEXT NOT NULL DEFAULT 'unknown'
             );
             CREATE TABLE IF NOT EXISTS plugin_capabilities (
                 plugin_id  TEXT NOT NULL,
@@ -166,7 +227,30 @@ impl PluginRegistry {
             );
             "#,
         )?;
+        Self::migrate(&conn);
         Ok(conn)
+    }
+
+    /// P2.4-C01/C02 migration: add the `trust` column to a pre-P2.4 database
+    /// (detected by PRAGMA, idempotent). Existing plugins are `unknown` —
+    /// migration never auto-trusts (fail-closed).
+    fn migrate(conn: &Connection) {
+        let has_trust = conn
+            .prepare("PRAGMA table_info(plugins)")
+            .map(|mut stmt| {
+                let names: Result<Vec<String>, _> = stmt
+                    .query_map([], |r| r.get::<_, String>(1))?
+                    .collect();
+                names.map(|cols| cols.iter().any(|c| c == "trust"))
+            })
+            .unwrap_or(Ok(false))
+            .unwrap_or(false);
+        if !has_trust {
+            tracing::info!(to = 2, "plugin registry schema migration (trust column)");
+            let _ = conn.execute_batch(
+                "ALTER TABLE plugins ADD COLUMN trust TEXT NOT NULL DEFAULT 'unknown';",
+            );
+        }
     }
 
     /// Lifecycle state for one plugin; unknown plugins default to
@@ -250,6 +334,87 @@ impl PluginRegistry {
             "INSERT OR IGNORE INTO plugin_capabilities(plugin_id, capability, decision)
              VALUES (?1, ?2, 'unset')",
             params![plugin_id, capability],
+        )?;
+        drop(conn);
+        self.refresh_backup();
+        Ok(())
+    }
+
+    /// P2.4-C02: trust of one plugin; unknown plugins are `Unknown`.
+    pub fn trust(&self, plugin_id: &str) -> TrustState {
+        let conn = self.conn.lock().expect("registry lock");
+        let t: Option<String> = conn
+            .query_row(
+                "SELECT trust FROM plugins WHERE plugin_id = ?1",
+                params![plugin_id],
+                |r| r.get(0),
+            )
+            .ok();
+        t.as_deref().map(TrustState::parse).unwrap_or(TrustState::Unknown)
+    }
+
+    /// Explicit trust transition (host/admin operation only). This is the
+    /// ONLY path to `Trusted` — there is no API that reaches it from
+    /// manifest data, AI/MCP output or discovery.
+    pub fn set_trust(&self, plugin_id: &str, trust: TrustState) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().expect("registry lock");
+        conn.execute(
+            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, trust)
+             VALUES (?1, 1, 0, 0, ?2, ?3)
+             ON CONFLICT(plugin_id) DO UPDATE SET trust = ?3, updated_at = ?2",
+            params![plugin_id, now_ms(), trust.as_str()],
+        )?;
+        drop(conn);
+        self.refresh_backup();
+        Ok(())
+    }
+
+    /// Manifest observation: promotes `Unknown` → `Known` ONLY (discovery is
+    /// not trust). `Known`/`Trusted` are never demoted by re-observation.
+    pub fn note_manifest_observed(&self, plugin_id: &str) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().expect("registry lock");
+        conn.execute(
+            "INSERT INTO plugins(plugin_id, enabled, quarantined, failures, updated_at, trust)
+             VALUES (?1, 1, 0, 0, ?2, 'known')
+             ON CONFLICT(plugin_id) DO UPDATE SET
+               trust = CASE WHEN trust = 'unknown' THEN 'known' ELSE trust END,
+               updated_at = ?2",
+            params![plugin_id, now_ms()],
+        )?;
+        drop(conn);
+        self.refresh_backup();
+        Ok(())
+    }
+
+    /// P2.4-C03: stored capability decision; unset (default) must fail
+    /// closed at the enforcement point.
+    pub fn capability_decision(&self, plugin_id: &str, capability: &str) -> CapDecision {
+        let conn = self.conn.lock().expect("registry lock");
+        let d: Option<String> = conn
+            .query_row(
+                "SELECT decision FROM plugin_capabilities WHERE plugin_id = ?1 AND capability = ?2",
+                params![plugin_id, capability],
+                |r| r.get(0),
+            )
+            .ok();
+        d.as_deref().map(CapDecision::parse).unwrap_or(CapDecision::Unset)
+    }
+
+    /// Explicit capability decision (host approval UI / policy). The ONLY
+    /// writer of a decision — manifest requests record via
+    /// [`Self::record_capability`] and always stay `unset`.
+    pub fn set_capability_decision(
+        &self,
+        plugin_id: &str,
+        capability: &str,
+        decision: CapDecision,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().expect("registry lock");
+        conn.execute(
+            "INSERT INTO plugin_capabilities(plugin_id, capability, decision)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(plugin_id, capability) DO UPDATE SET decision = ?3",
+            params![plugin_id, capability, decision.as_str()],
         )?;
         drop(conn);
         self.refresh_backup();
@@ -354,6 +519,53 @@ mod tests {
         let r = PluginRegistry::open(&db).unwrap();
         assert!(!r.state("p").enabled);
         assert_eq!(r.state("q").protocol_failures, 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// P2.4-C02: discovery reaches `Known` only; `Trusted` needs the
+    /// explicit host operation; re-observation never demotes trust.
+    #[test]
+    fn trust_ladder_never_auto_trusts() {
+        let r = reg();
+        assert_eq!(r.trust("p1"), TrustState::Unknown, "unknown plugin = Unknown");
+        r.note_manifest_observed("p1").unwrap();
+        assert_eq!(r.trust("p1"), TrustState::Known, "manifest observation = Known, never Trusted");
+        assert_ne!(r.trust("p1"), TrustState::Trusted);
+        r.note_manifest_observed("p1").unwrap();
+        assert_eq!(r.trust("p1"), TrustState::Known);
+        r.set_trust("p1", TrustState::Trusted).unwrap();
+        assert_eq!(r.trust("p1"), TrustState::Trusted);
+        // re-observation must not demote an explicit host decision
+        r.note_manifest_observed("p1").unwrap();
+        assert_eq!(r.trust("p1"), TrustState::Trusted);
+        // trust persists across reopen (backup path covers it too)
+    }
+
+    /// P2.4-C03: unset != allow; only the explicit decision API mutates;
+    /// manifest requests record as unset; deny persists across reopen.
+    #[test]
+    fn capability_decisions_fail_closed_and_persist() {
+        let dir = scratch_dir("reg_cap");
+        let db = dir.join("plugins.db");
+        {
+            let r = PluginRegistry::open(&db).unwrap();
+            assert_eq!(
+                r.capability_decision("p1", "filesystem.read"),
+                CapDecision::Unset,
+                "unknown capability = unset (fail closed)"
+            );
+            // manifest REQUEST records — stays unset
+            r.record_capability("p1", "filesystem.read").unwrap();
+            assert_eq!(r.capability_decision("p1", "filesystem.read"), CapDecision::Unset);
+            r.set_capability_decision("p1", "filesystem.read", CapDecision::Allow).unwrap();
+            r.set_capability_decision("p1", "network", CapDecision::Deny).unwrap();
+        }
+        {
+            let r = PluginRegistry::open(&db).unwrap();
+            assert_eq!(r.capability_decision("p1", "filesystem.read"), CapDecision::Allow);
+            assert_eq!(r.capability_decision("p1", "network"), CapDecision::Deny);
+            assert_eq!(r.capability_decision("p1", "shell.execute"), CapDecision::Unset);
+        }
         std::fs::remove_dir_all(&dir).ok();
     }
 
