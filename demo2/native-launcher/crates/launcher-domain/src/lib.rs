@@ -967,3 +967,5 @@ mod identity_tests {
         assert_ne!(n(r"D:\Foo\Bar.txt"), n(r"D:\Foo\Baz.txt"));
     }
 }
+
+pub mod system;
