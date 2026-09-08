@@ -503,6 +503,31 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// A06 conformance: corruption resets lifecycle metadata to safe defaults
+    /// (ready + fresh rebuild). Stale/broken are rebuildable metadata — they
+    /// must never SURVIVE as authority-bearing residue after a rebuild.
+    #[test]
+    fn corrupt_rebuild_resets_lifecycle_to_ready() {
+        static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("nl_cat_a06_{}_{}", std::process::id(), n));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("catalog.db");
+        {
+            let s = CatalogStore::open(&db).unwrap();
+            s.reconcile_observations(&[obs("start-menu", r"C:\A\App.exe", "App")])
+                .unwrap();
+            s.set_lifecycle(&s.list().unwrap()[0].identity_key, CatalogLifecycle::Stale)
+                .unwrap();
+        }
+        std::fs::write(&db, b"NOT SQLITE AT ALL").unwrap();
+        let s = CatalogStore::open(&db).unwrap();
+        assert_eq!(s.generation().unwrap(), 0, "rebuild restarts generation");
+        assert!(s.list().unwrap().is_empty(), "corrupt catalog rebuilds empty");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// §4.5: a failed reconcile (db locked by another writer) leaves the
     /// previous committed generation and catalog visible.
     #[test]

@@ -16,8 +16,12 @@ use launcher_domain::{FileChange, FileChangeKind};
 pub enum CoordinatorMsg {
     Change(FileChange),
     /// Buffer overflow for this root: queued events are untrustworthy; the
-    /// containing root must be marked dirty and rescanned.
+    /// containing root must be marked dirty and rescanned. The watcher thread
+    /// STAYS ALIVE through an overflow.
     Overflow { root: String },
+    /// P2.4-B02: the watcher thread for this root EXITED (watch error or the
+    /// root itself vanished). The coordinator schedules bounded re-registration.
+    WatcherExited { root: String },
     Stop,
 }
 
@@ -28,21 +32,28 @@ impl WindowsWatcher {
     /// overlapped RDC loop until a `Stop` is sent (or the handle dies).
     pub fn spawn(roots: &[std::path::PathBuf], tx: Sender<CoordinatorMsg>, stop: &StopHandle) {
         for root in roots {
-            let root = root.clone();
-            let tx = tx.clone();
-            let stop = stop.clone();
-            std::thread::Builder::new()
-                .name(format!("watcher({})", root.display()))
-                .spawn(move || {
-                    if let Err(e) = watch_root(&root, &tx, &stop) {
-                        eprintln!("[diag] watcher exited: root={} error={}", root.display(), e);
-                        let _ = tx.send(CoordinatorMsg::Overflow {
-                            root: root.to_string_lossy().to_string(),
-                        });
-                    }
-                })
-                .ok();
+            Self::spawn_root(root, tx.clone(), stop);
         }
+    }
+
+    /// P2.4-B02: (re-)register a single root's watcher. On watch error the
+    /// thread reports `WatcherExited` so the coordinator can schedule a
+    /// bounded re-registration — a transient watch failure or a deleted root
+    /// no longer permanently silences the root.
+    pub fn spawn_root(root: &std::path::Path, tx: Sender<CoordinatorMsg>, stop: &StopHandle) {
+        let root = root.to_path_buf();
+        let stop = stop.clone();
+        std::thread::Builder::new()
+            .name(format!("watcher({})", root.display()))
+            .spawn(move || {
+                if let Err(e) = watch_root(&root, &tx, &stop) {
+                    eprintln!("[diag] watcher exited: root={} error={}", root.display(), e);
+                    let _ = tx.send(CoordinatorMsg::WatcherExited {
+                        root: root.to_string_lossy().to_string(),
+                    });
+                }
+            })
+            .ok();
     }
 }
 

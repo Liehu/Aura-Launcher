@@ -62,9 +62,14 @@ pub enum IndexHealth {
     Rebuilding,
     Degraded,
     Failed,
+    /// P2.4-B01: one or more watch roots are missing (deleted/dismounted).
+    /// The committed index remains fully queryable; maintenance polls for
+    /// reappearance at a bounded rate and rescans + re-watches on return.
+    Unavailable,
 }
 
-/// Read-only maintenance view for Search/diagnostics (review 76 §22).
+/// Read-only maintenance view for Search/diagnostics (review 76 §22;
+/// P2.4-B05 health model per spec `01-P2.4-DESIGN-SPEC.md` §5.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexStatus {
     pub health: IndexHealth,
@@ -73,4 +78,32 @@ pub struct IndexStatus {
     pub dirty_roots: usize,
     pub indexed_entries: u64,
     pub last_error: Option<String>,
+    /// Live watcher threads (one per watched root).
+    pub watcher_count: usize,
+    /// Roots currently missing from the filesystem.
+    pub unavailable_roots: usize,
+    /// Unix ms of the last successful batch commit / recovery.
+    pub last_success_ms: Option<i64>,
+    /// Unix ms of the last maintenance/commit failure.
+    pub last_failure_ms: Option<i64>,
+    /// Bounded recoveries performed (dirty-root rescans + root reappearances).
+    pub recovery_count: u64,
+}
+
+impl Default for IndexStatus {
+    fn default() -> Self {
+        Self {
+            health: IndexHealth::Empty,
+            generation: 0,
+            pending_events: 0,
+            dirty_roots: 0,
+            indexed_entries: 0,
+            last_error: None,
+            watcher_count: 0,
+            unavailable_roots: 0,
+            last_success_ms: None,
+            last_failure_ms: None,
+            recovery_count: 0,
+        }
+    }
 }
