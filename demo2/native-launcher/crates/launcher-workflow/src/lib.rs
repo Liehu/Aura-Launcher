@@ -10,6 +10,7 @@
 //!   PluginBroker routing), returning classified failures.
 
 pub mod proposal;
+pub mod graph;
 pub mod v2;
 
 use launcher_domain::{

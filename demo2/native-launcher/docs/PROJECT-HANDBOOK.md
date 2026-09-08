@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-09（**P2.5 完成**，见 `docs/history/99-p25-batch5-ef-closure.md`；批次 95-98 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：690 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-09（**P2.6 Batch 1**，见 `docs/history/100-p26-batch1-graph.md`；P2.5 完成见 95-99 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：701 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -304,6 +304,17 @@ P25-F         G14 "P2.5 conformance" 入 release_gate，    ✅ Batch 5
               G01~G14 全 PASS —— 99 号
 P25-A04/C04   Pinyin                                     ⏸ 唯一尾项（独立批次）
 
+── P2.6 Workflow 2.0（spec: files2/P2.6 开发设计规范）───────────────
+P26-A01/A02   Graph Domain Model + DAG Validator         ✅ Batch 1
+              （DAG-only 政策；11 测试）—— 100 号
+P26-A03–A06   Join/条件引擎/变量/契约 kit                ⏳ 未开始
+P26-B         Durable Runtime（store/checkpoint/         ⏳ 未开始
+              scheduler/parallel/retry/recovery）
+P26-C         Human Approval（契约/UI/安全）             ⏳ 未开始
+P26-D         Trigger Framework + Queue                  ⏳ 未开始
+P26-E         Visual Editor（7 任务）                    ⏳ 未开始
+P26-F/G       QA + Release                               ⏳ 未开始
+
 P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
            (E01 Provider 失败/成功路径→结构化诊断 +
             E03 快照落盘 + E04 replay + E05 分类打通
@@ -339,7 +350,7 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 690 全绿）
+cargo test --workspace          # 行为回归闸门（当前 701 全绿）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
 python scripts/release_gate.py    # Release Gate（G01~G14：1.0 + P2.4/P2.5 conformance + evidence/manifest）
