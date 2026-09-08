@@ -41,6 +41,79 @@ pub struct RankingWeights {
     /// Recency bonus: used within 24h / within 7 days.
     pub history_recency_day: f32,
     pub history_recency_week: f32,
+    // ---- P25-D02: previously hard-coded scoring constants, now weights ----
+    /// Title match tiers (exact / prefix / contains).
+    pub title_exact: f32,
+    pub title_prefix: f32,
+    pub title_contains: f32,
+    /// Plugin hint contribution ceiling (ADR-0011: hint max < title exact).
+    pub plugin_hint: f32,
+}
+
+/// P25-D02: weight schema version — bump when field semantics change so a
+/// persisted config can be validated against the code that reads it.
+pub const RANKING_WEIGHTS_VERSION: u32 = 2;
+
+impl RankingWeights {
+    /// Serialize for config persistence (versioned).
+    pub fn to_config_json(&self) -> String {
+        let v = serde_json::json!({
+            "version": RANKING_WEIGHTS_VERSION,
+            "weights": {
+                "keyword_exact": self.keyword_exact,
+                "keyword_prefix": self.keyword_prefix,
+                "keyword_contains": self.keyword_contains,
+                "fuzzy_subsequence": self.fuzzy_subsequence,
+                "multi_token": self.multi_token,
+                "history_freq_per_use": self.history_freq_per_use,
+                "history_freq_cap": self.history_freq_cap,
+                "history_recency_day": self.history_recency_day,
+                "history_recency_week": self.history_recency_week,
+                "title_exact": self.title_exact,
+                "title_prefix": self.title_prefix,
+                "title_contains": self.title_contains,
+                "plugin_hint": self.plugin_hint,
+            }
+        });
+        v.to_string()
+    }
+
+    /// AC-D02-2: invalid config fallback — any non-finite or negative weight
+    /// falls back to the DEFAULT for that field only; unknown versions fall
+    /// back entirely. Never panics, never half-applies.
+    pub fn from_config_json(json: &str) -> Result<Self, String> {
+        let v: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+        if v["version"].as_u64() != Some(RANKING_WEIGHTS_VERSION as u64) {
+            return Err(format!("unsupported weights version (want {RANKING_WEIGHTS_VERSION})"));
+        }
+        let w = &v["weights"];
+        let mut out = Self::default();
+        let fields = [
+            ("keyword_exact", &mut out.keyword_exact),
+            ("keyword_prefix", &mut out.keyword_prefix),
+            ("keyword_contains", &mut out.keyword_contains),
+            ("fuzzy_subsequence", &mut out.fuzzy_subsequence),
+            ("multi_token", &mut out.multi_token),
+            ("history_freq_per_use", &mut out.history_freq_per_use),
+            ("history_recency_day", &mut out.history_recency_day),
+            ("history_recency_week", &mut out.history_recency_week),
+            ("title_exact", &mut out.title_exact),
+            ("title_prefix", &mut out.title_prefix),
+            ("title_contains", &mut out.title_contains),
+            ("plugin_hint", &mut out.plugin_hint),
+        ];
+        for (name, field) in fields {
+            if let Some(val) = w[name].as_f64() {
+                if val.is_finite() && val >= 0.0 {
+                    *field = val as f32;
+                }
+            }
+        }
+        if let Some(cap) = w["history_freq_cap"].as_u64() {
+            out.history_freq_cap = cap.min(1000) as u32;
+        }
+        Ok(out)
+    }
 }
 
 impl Default for RankingWeights {
@@ -55,6 +128,10 @@ impl Default for RankingWeights {
             history_freq_cap: 10,
             history_recency_day: 12.0,
             history_recency_week: 6.0,
+            title_exact: 100.0,
+            title_prefix: 60.0,
+            title_contains: 40.0,
+            plugin_hint: 45.0,
         }
     }
 }
@@ -65,33 +142,91 @@ impl Default for RankingWeights {
 /// title, file stem, each title word) so "Google Chrome" matches "ch" via
 /// the word "chrome" without extension noise from "chrome-shortcut.url",
 /// plus per-keyword bonuses and the result-type prior.
-pub fn score(command: &Command, query: &QueryContext) -> f32 {
+/// P25-D03: one scoring breakdown — the ONLY source of ranking numbers.
+/// `total` is the actual score used by rank(); the explanation IS these
+/// parts (same source, AC-D03-1/2). Pure data: no execution authority
+/// (AC-D03-3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScoreParts {
+    pub plugin_hint: f32,
+    pub title: f32,
+    pub keyword: f32,
+    pub fuzzy: f32,
+    pub multi_token: f32,
+    pub type_prior: f32,
+    /// Where the title match landed (explainability, P25-D03 step 4).
+    pub matched_field: MatchedField,
+}
+
+impl ScoreParts {
+    /// Total = sum of parts (single source of truth for both score and
+    /// explanation).
+    pub fn total(&self) -> f32 {
+        self.plugin_hint + self.title + self.keyword + self.fuzzy + self.multi_token + self.type_prior
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchedField {
+    None,
+    Title,
+    TitleStem,
+    TitleWord,
+    Keyword,
+    Fuzzy,
+}
+
+/// Score with explicit weights AND a full breakdown. `score()` is a thin
+/// wrapper over this — score and explanation can never diverge.
+pub fn score_with_parts(
+    command: &Command,
+    query: &QueryContext,
+    w: &RankingWeights,
+) -> ScoreParts {
+    let mut parts = ScoreParts {
+        plugin_hint: 0.0,
+        title: 0.0,
+        keyword: 0.0,
+        fuzzy: 0.0,
+        multi_token: 0.0,
+        type_prior: 0.0,
+        matched_field: MatchedField::None,
+    };
     if query.normalized.is_empty() {
-        return 0.0;
+        return parts;
     }
     // plugin hint (bounded [0,1], weighted) — lets non-lexical results like
     // calculators surface without letting a plugin own the ranking:
-    // max hint contribution 45 < exact title match 100 (ADR-0011).
-    let mut s = command.score.clamp(0.0, 1.0) * 45.0;
+    // hint max < exact title match (ADR-0011).
+    parts.plugin_hint = command.score.clamp(0.0, 1.0) * w.plugin_hint;
     let title = command.title.to_lowercase();
     let q = &query.normalized;
 
-    let mut title_score = best_title_score(&title, q);
+    let mut title_score = best_title_score(&title, q, w);
+    let mut field = if title_score > 0.0 { MatchedField::Title } else { parts.matched_field };
     if command.category == Category::File {
         if let Some(stem) = Path::new(&title).file_stem().and_then(|s| s.to_str()) {
-            title_score = title_score.max(best_title_score(stem, q));
+            let stem_score = best_title_score(stem, q, w);
+            if stem_score > title_score {
+                title_score = stem_score;
+                field = MatchedField::TitleStem;
+            }
         }
     }
-    for w in title.split(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.')) {
-        title_score = title_score.max(best_title_score(w, q));
+    for word in title.split(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.')) {
+        let word_score = best_title_score(word, q, w);
+        if word_score > title_score {
+            title_score = word_score;
+            field = MatchedField::TitleWord;
+        }
     }
-    s += title_score;
+    parts.title = title_score;
+    parts.matched_field = if title_score > 0.0 { field } else { MatchedField::None };
 
-    // per-keyword bonus (weights: P2.1-G)
-    let w = RankingWeights::default();
+    // per-keyword bonus
     for k in &command.keywords {
         let k = k.to_lowercase();
-        s += if *k == *q {
+        parts.keyword += if *k == *q {
             w.keyword_exact
         } else if k.starts_with(q) {
             w.keyword_prefix
@@ -101,10 +236,15 @@ pub fn score(command: &Command, query: &QueryContext) -> f32 {
             0.0
         };
     }
+    if parts.keyword > 0.0 && parts.matched_field == MatchedField::None {
+        parts.matched_field = MatchedField::Keyword;
+    }
 
-    // token-level (subsequence fuzzy) match
-    if s == 0.0 && is_subsequence(&title, q) {
-        s += w.fuzzy_subsequence;
+    // token-level (subsequence fuzzy) match — only when nothing lexical hit
+    let lexical = parts.plugin_hint + parts.title + parts.keyword;
+    if lexical == 0.0 && is_subsequence(&title, q) {
+        parts.fuzzy = w.fuzzy_subsequence;
+        parts.matched_field = MatchedField::Fuzzy;
     }
     // every token must appear somewhere for multi-token queries
     if query.tokens.len() > 1 {
@@ -117,23 +257,27 @@ pub fn score(command: &Command, query: &QueryContext) -> f32 {
         let haystack = format!("{title} {keywords}");
         let all = query.tokens.iter().all(|t| haystack.contains(t));
         if all {
-            s += w.multi_token;
+            parts.multi_token = w.multi_token;
         }
     }
-    if s > 0.0 {
-        s += type_prior(command.category);
+    if parts.total() > 0.0 {
+        parts.type_prior = type_prior(command.category);
     }
-    s
+    parts
 }
 
-/// exact > prefix > contains score for one candidate string.
-fn best_title_score(candidate: &str, query: &str) -> f32 {
+pub fn score(command: &Command, query: &QueryContext) -> f32 {
+    score_with_parts(command, query, &RankingWeights::default()).total()
+}
+
+/// exact > prefix > contains score for one candidate string (weights: D02).
+fn best_title_score(candidate: &str, query: &str, w: &RankingWeights) -> f32 {
     if candidate == query {
-        100.0
+        w.title_exact
     } else if candidate.starts_with(query) {
-        60.0
+        w.title_prefix
     } else if candidate.contains(query) {
-        40.0
+        w.title_contains
     } else {
         0.0
     }

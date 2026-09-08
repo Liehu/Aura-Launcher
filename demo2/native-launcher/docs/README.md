@@ -48,6 +48,7 @@
 | `95-p25-batch1-query-intelligence.md` | **P2.5 Batch 1**：Search Contract v2（P25-001）+ Query Normalizer v2（A01）+ Intent Detector（A02）+ 显式 Filter（A03） | ✅ 671 tests |
 | `96-p25-batch2-coordinator.md` | **P2.5 Batch 2**：SearchCoordinator（B01 骨架/B02 有界并发 fan-out/B03 panic 隔离/B04 取消守卫/B06 路由 v0.1） | ✅ 676 tests |
 | `97-p25-batch3-fts.md` | **P2.5 Batch 3**：FTS5 检索层（C01 schema/增量同步/自愈 + C02 catalog FTS + C05 LIKE 合并回退 + C06 扩展点） | ✅ 679 tests |
+| `98-p25-batch4-ranking.md` | **P2.5 Batch 4**：Ranking v2（D02 权重集中+版本化配置回退 + D03 ScoreParts 同源解释 + D05 质量语料回归） | ✅ 687 tests |
 
 ## 权威文档（不在本目录）
 

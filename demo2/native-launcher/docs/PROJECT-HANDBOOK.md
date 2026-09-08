@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-08（**P2.5 Batch 3**，见 `docs/history/97-p25-batch3-fts.md`；Batch 1/2 见 95/96 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：679 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G13 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-09（**P2.5 Batch 4**，见 `docs/history/98-p25-batch4-ranking.md`；Batch 1-3 见 95-97 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：687 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G13 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -293,7 +293,13 @@ P25-C01/C05 FTS5 检索层 + LIKE 合并回退（files_fts      ✅ Batch 3
              path-fragment 零回归）—— 97 号
 P25-C06     Content 扩展点（显式禁用）                  ✅ Batch 3
 P25-C02     Application FTS                             ✅ Batch 3
-P25-C03/C04 部分随行/A04 拼音推迟；D/E/F 线             ⏳ 未开始
+P25-D02/D03   Ranking v2：权重集中+版本化配置回退 +      ✅ Batch 4
+              ScoreParts 同源解释 + D05 质量语料
+              （默认值=旧行为，零排序回归）—— 98 号
+P25-D04/D06   推迟说明见 98 号（merge provenance 归入     ⏳ 归档
+              Candidate 模型；诊断随 E 线）
+P25-E/F       基准/Stress/CI/收口                        ⏳ 未开始
+P25-A04/C04   Pinyin                                     ⏳ 独立批次
 
 P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
            (E01 Provider 失败/成功路径→结构化诊断 +
@@ -330,7 +336,7 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 679 全绿）
+cargo test --workspace          # 行为回归闸门（当前 687 全绿）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
 python scripts/release_gate.py    # Launcher 1.0 Release Gate（G01~G12 + evidence/manifest）
