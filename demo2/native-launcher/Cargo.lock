@@ -2938,6 +2938,8 @@ name = "launcher-search"
 version = "1.0.0"
 dependencies = [
  "launcher-domain",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

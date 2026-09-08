@@ -45,6 +45,7 @@
 | `92-p24-batch2-index.md` | **P2.4 Batch 2**：File Index 2.0（B01/B04 root 状态机 + B02 watcher 重注册退避 + B05 健康模型 + B06 soak）+ A06 catalog 恢复 conformance | ✅ 642 tests |
 | `93-p24-batch3-cli.md` | **P2.4 Batch 3**：C01 installation revision + C06 结构化诊断 + launcher-plugin CLI（D01-D05，新 app） | ✅ 654 tests |
 | `94-p24-batch4-ef-closure.md` | **P2.4 收口**：E01-E05 诊断打通/快照落盘/Replay + F（G13 P2.4 conformance 入 gate） | ✅ 655 tests / G01-G13 PASS |
+| `95-p25-batch1-query-intelligence.md` | **P2.5 Batch 1**：Search Contract v2（P25-001）+ Query Normalizer v2（A01）+ Intent Detector（A02）+ 显式 Filter（A03） | ✅ 671 tests |
 
 ## 权威文档（不在本目录）
 

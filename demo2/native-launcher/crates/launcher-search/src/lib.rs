@@ -3,6 +3,7 @@
 //! pure functions only, fully unit-testable, no IO.
 
 pub mod cache;
+pub mod intelligence;
 
 use std::path::Path;
 
