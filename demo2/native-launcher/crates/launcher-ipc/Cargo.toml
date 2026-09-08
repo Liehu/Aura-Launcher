@@ -1,0 +1,10 @@
+[package]
+name = "launcher-ipc"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+launcher-domain = { workspace = true }

@@ -1,0 +1,14 @@
+// SelectedMarker (VISUAL-DESIGN-SPEC shared primitive, review 37):
+// pure visual - renders the non-color selected marker. It accepts only
+// `show`; selection logic (which row is selected) lives in the caller.
+import { Theme } from "../theme.slint";
+
+export component SelectedMarker inherits Text {
+    in property <bool> show: true;
+    in property <length> size: 15px;
+    text: "\u{25B8}";
+    visible: show;
+    color: Theme.text-primary;
+    font-size: size;
+    vertical-alignment: center;
+}

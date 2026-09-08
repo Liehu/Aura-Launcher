@@ -1,0 +1,18 @@
+[package]
+name = "launcher-providers"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-core = { workspace = true }
+launcher-domain = { workspace = true }
+anyhow = { workspace = true }
+lnk = { version = "0.6", features = ["binwrite", "unstable-save"] }
+png = "0.17"
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[target."cfg(windows)".dependencies]
+winreg = "0.55"
+windows = { workspace = true }

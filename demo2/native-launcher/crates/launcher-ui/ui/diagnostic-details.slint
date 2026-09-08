@@ -1,0 +1,25 @@
+// DiagnosticDetails (UI-CONTRACT §21 Level 3): monospace diagnostic lines
+// shown ONLY on explicit user request. Pure presentation - it renders the
+// lines handed over by the runtime; "Launcher ≠ Developer Console" holds
+// because this surface stays hidden by default.
+import { Theme } from "theme.slint";
+
+export component DiagnosticDetails inherits Rectangle {
+    in property <[string]> lines;
+    in property <bool> show: false;
+    height: show ? lines.length * 16px + Theme.space-2 : 0px;
+    background: Theme.bg-input;
+    border-radius: Theme.radius-small;
+    clip: true;
+    VerticalLayout {
+        padding-left: Theme.space-2;
+        padding-right: Theme.space-2;
+        alignment: start;
+        for line in lines : Text {
+            text: line;
+            color: Theme.text-tertiary;
+            font-family: "Cascadia Mono";
+            font-size: Theme.type-diagnostic;
+        }
+    }
+}

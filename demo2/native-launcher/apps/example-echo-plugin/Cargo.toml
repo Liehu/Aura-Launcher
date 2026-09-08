@@ -1,0 +1,9 @@
+[package]
+name = "example-echo-plugin"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-plugin-api = { workspace = true }
+launcher-ipc = { workspace = true }
+serde_json = { workspace = true }

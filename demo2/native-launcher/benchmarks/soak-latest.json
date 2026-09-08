@@ -1,0 +1,26 @@
+{
+  "elapsed_ms": 818,
+  "last_third_growth_bytes": 0,
+  "memory_private_bytes": {
+    "final": 3997696,
+    "initial": 3997696,
+    "median": 3997696,
+    "min": 3997696,
+    "p95": 3997696,
+    "peak": 3997696
+  },
+  "operations": 100002,
+  "peak_to_final_bytes": 0,
+  "peak_to_final_ratio": 1.0,
+  "sample_count": 20,
+  "slope_bytes_per_op": {
+    "role": "diagnostic",
+    "value": 0.0
+  },
+  "verdict": {
+    "final_within_20pct": true,
+    "pass": true,
+    "staircase_suspected": false
+  },
+  "version": 2
+}

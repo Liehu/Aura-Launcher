@@ -1,0 +1,57 @@
+// ResultList (UI-CONTRACT §9): visible rows, selection presentation, and
+// empty-state text. It never decides which command is executable - rows emit
+// execute() and the parent resolves the primary action by command_id.
+//
+// Spec v0.2: the list height is `visible-rows * row-main` (window height is
+// content-driven from this); rows beyond the visible window scroll inside
+// the Flickable, and the viewport follows the keyboard selection.
+import { Theme } from "theme.slint";
+import { ResultItem, ResultRow } from "result-row.slint";
+export { ResultItem }
+
+export component ResultList inherits Rectangle {
+    in property <[ResultItem]> results;
+    in-out property <int> selected-index;
+    in property <int> visible-rows: 6;
+    /// Progressive Disclosure (Spec v0.2 §20): the empty-state ("No
+    /// results") only exists AFTER the user typed something; Initial state
+    /// (empty query) shows nothing at all below the search box.
+    in property <bool> show-empty: false;
+    in property <string> empty-text: "No results";
+    callback selection-changed(string);
+    callback execute(string);
+
+    background: Theme.bg-surface;
+    height: results.length > 0
+        ? visible-rows * Theme.row-main
+        : (show-empty ? 2 * Theme.row-main : 0px);
+
+    if show-empty && results.length == 0 : Text {
+        text: empty-text;
+        color: Theme.text-tertiary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if results.length > 0 : Flickable {
+        x: 0; y: 0;
+        width: parent.width;
+        height: parent.height;
+        viewport-width: parent.width;
+        viewport-height: results.length * Theme.row-main + Theme.space-2;
+        // keep the keyboard-selected row in view (bottom-align at the end of
+        // the list, otherwise shift only when the selection leaves the window)
+        viewport-y: Math.min(0px, Math.max(
+            self.height - self.viewport-height,
+            -(root.selected-index * Theme.row-main + Theme.space-1)));
+
+        VerticalLayout {
+            padding: Theme.space-1;
+            for r[index] in results : ResultRow {
+                item: r;
+                selected: index == root.selected-index;
+                execute => { root.execute(r.command-id); }
+            }
+        }
+    }
+}

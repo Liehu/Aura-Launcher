@@ -1,0 +1,21 @@
+[package]
+name = "calculator-plus"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-plugin-api = { workspace = true }
+launcher-ipc = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "plugin-calculator-plus"
+path = "src/main.rs"
+
+[dev-dependencies]
+launcher-domain = { workspace = true }
+launcher-plugin-host = { workspace = true }
+serde_json = { workspace = true }
+launcher-action = { workspace = true }
+launcher-core = { workspace = true }
+launcher-workflow = { workspace = true }

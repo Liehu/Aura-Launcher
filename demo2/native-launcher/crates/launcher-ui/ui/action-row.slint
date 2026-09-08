@@ -1,0 +1,78 @@
+// ActionRow (UI-CONTRACT §11): presentation only. It receives an ActionItem
+// + `selected` flag and renders them; it never decides executability
+// (disabled rows render dimmed with reason and emit nothing) and never
+// derives primary (is_primary is host-computed, INV-036/051).
+import { Theme } from "theme.slint";
+import { SelectedMarker } from "primitives/selected-marker.slint";
+import { ShortcutBadge } from "primitives/shortcut-badge.slint";
+
+export struct ActionItem {
+    action-id: string,
+    title: string,
+    enabled: bool,
+    reason: string,
+    shortcut: string,
+    // first Ready action (host-computed); Enter executes THIS row
+    is-primary: bool,
+}
+
+export component ActionRow inherits Rectangle {
+    in property <ActionItem> item;
+    in property <bool> selected;
+    /// Accent for badges/marker (injected from the host theme/config chain).
+    in property <color> accent: Theme.accent-primary;
+    callback execute();
+
+    height: Theme.row-action;
+    background: selected ? root.accent : transparent;
+    opacity: item.enabled ? 1.0 : 0.5;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-2;
+        alignment: start;
+
+        SelectedMarker { show: root.selected; size: 14px; }
+
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: item.title;
+                color: Theme.text-primary;
+                font-size: Theme.type-body;
+            }
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        VerticalLayout {
+            alignment: center;
+            // failure reason (Level 1) - error color + text
+            if !item.enabled : Text {
+                text: item.reason;
+                color: Theme.semantic-error;
+                font-size: Theme.type-diagnostic;
+                horizontal-alignment: right;
+            }
+            // shortcut / primary affordance as compact badge
+            if item.enabled && item.shortcut != "" : ShortcutBadge {
+                label: item.shortcut;
+                label-color: root.accent;
+            }
+            if item.enabled && item.shortcut == "" && item.is-primary : ShortcutBadge {
+                label: "Enter";
+                label-color: root.accent;
+            }
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            // disabled rows: visible but emit nothing (INV-031/038)
+            if item.enabled {
+                root.execute();
+            }
+        }
+    }
+}

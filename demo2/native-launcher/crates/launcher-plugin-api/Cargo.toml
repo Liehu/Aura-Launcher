@@ -1,0 +1,9 @@
+[package]
+name = "launcher-plugin-api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-ipc = { workspace = true }
+launcher-domain = { workspace = true }
+serde_json = { workspace = true }

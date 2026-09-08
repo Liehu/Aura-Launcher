@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "com.example.calculator.plus",
+  "name": "Calculator Plus",
+  "version": "1.0.0",
+  "api_version": "0.1",
+  "runtime": {
+    "type": "process",
+    "executable": "plugin-calculator-plus.exe"
+  },
+  "capabilities": ["clipboard.write", "plugin.invoke"],
+  "timeout_ms": 2000,
+  "idle_timeout_ms": 10000
+}

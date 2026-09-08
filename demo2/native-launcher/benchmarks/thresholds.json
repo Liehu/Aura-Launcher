@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "description": "Performance budget (P2.3-D, review 88 §21-23). Baseline ≠ Budget: baseline records current actual; budget is the product-allowed ceiling. Gate FAIL = current > budget.",
+  "tolerances": {
+    "search_p95_max_regression_pct": 50,
+    "startup_p95_max_regression_pct": 50,
+    "memory_max_regression_pct": 100
+  },
+  "budgets": {
+    "search_app_p95_us": 50,
+    "search_file_p95_us": 50,
+    "cold_start_ms": 500,
+    "idle_rss_mb": 50
+  },
+  "note": "v1.0: all four budgets enforced by G10 against fresh bench + artifacts/perf-release.json (real-process startup, idle RSS) + soak verdicts. Tighten after multi-machine verification."
+}

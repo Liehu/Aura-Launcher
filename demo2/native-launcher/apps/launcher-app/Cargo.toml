@@ -1,0 +1,31 @@
+[package]
+name = "launcher-app"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-domain = { workspace = true }
+launcher-core = { workspace = true }
+launcher-mcp = { workspace = true }
+launcher-providers = { workspace = true }
+launcher-config = { workspace = true }
+launcher-hotkey = { workspace = true }
+launcher-indexer = { workspace = true }
+launcher-context = { workspace = true }
+launcher-action = { workspace = true }
+launcher-search = { workspace = true }
+launcher-ui = { workspace = true }
+launcher-ipc = { workspace = true }
+slint = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+winreg = { workspace = true }
+launcher-workflow = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+raw-window-handle = "0.6"

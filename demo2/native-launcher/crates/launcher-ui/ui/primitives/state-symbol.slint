@@ -1,0 +1,17 @@
+// StateSymbol (VISUAL-DESIGN-SPEC shared primitive): renders the frozen
+// workflow/status symbol vocabulary. Pure visual - the caller supplies the
+// symbol string and color from the Presentation Model; this component never
+// interprets WorkflowStepState.
+import { Theme } from "../theme.slint";
+
+export component StateSymbol inherits Text {
+    in property <string> symbol;
+    in property <bool> show: true;
+    in property <color> symbol-color: Theme.text-tertiary;
+    in property <length> size: 13px;
+    text: symbol;
+    visible: show;
+    color: symbol-color;
+    font-size: size;
+    vertical-alignment: center;
+}

@@ -1,0 +1,12 @@
+[package]
+name = "launcher-ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+slint = { workspace = true }
+launcher-domain = { workspace = true }
+tracing = { workspace = true }
+
+[build-dependencies]
+slint-build = "1"

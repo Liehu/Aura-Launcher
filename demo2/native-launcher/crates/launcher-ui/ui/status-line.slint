@@ -1,0 +1,18 @@
+// StatusLine (UI-CONTRACT section 15): presents the message handed to it
+// (Searching / Ready / Search failed / execution feedback). It never infers
+// the failure class from the string.
+import { Theme } from "theme.slint";
+
+export component StatusLine inherits Rectangle {
+    in property <string> message;
+    height: Theme.row-status;
+    background: Theme.bg-surface-elevated;
+    visible: message != "";
+    Text {
+        text: message;
+        color: Theme.semantic-error;
+        font-size: Theme.type-diagnostic;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}

@@ -1,0 +1,11 @@
+// FocusRing (VISUAL-DESIGN-SPEC shared primitive, section 9.2): 1px accent
+// keyboard-focus outline. Pure visual overlay - position/size it over the
+// focused element.
+import { Theme } from "../theme.slint";
+
+export component FocusRing inherits Rectangle {
+    background: transparent;
+    border-width: 1px;
+    border-color: Theme.border-focus;
+    border-radius: Theme.radius-medium;
+}

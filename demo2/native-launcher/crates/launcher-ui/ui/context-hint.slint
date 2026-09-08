@@ -1,0 +1,39 @@
+// ContextHint (UI-CONTRACT section 10): Core-provided presentation, compact
+// and informational. It never accesses Context/Explorer itself and never
+// becomes a Context Card.
+import { Theme } from "theme.slint";
+import { Divider } from "primitives/divider.slint";
+
+export component ContextHint inherits Rectangle {
+    in property <string> hint;
+    in property <string> affordance;
+    in property <bool> show-affordance: true;
+    in property <bool> visible-hint: true;
+
+    height: Theme.row-context;
+    background: Theme.bg-surface;
+    visible: visible-hint && hint != "";
+
+    Divider { width: parent.width; }
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        alignment: start;
+        VerticalLayout { alignment: center;
+            Text {
+                text: hint;
+                color: Theme.text-tertiary;
+                font-size: Theme.type-diagnostic;
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        VerticalLayout { alignment: center;
+            Text {
+                text: show-affordance ? affordance : "";
+                color: Theme.text-tertiary;
+                font-size: Theme.type-diagnostic;
+                horizontal-alignment: right;
+            }
+        }
+    }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "echo",
+  "name": "Echo Plugin",
+  "api_version": "0.1",
+  "executable": "example-echo-plugin.exe",
+  "capabilities": [],
+  "timeout_ms": 2000,
+  "idle_timeout_ms": 10000
+}

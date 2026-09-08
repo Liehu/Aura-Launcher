@@ -1,0 +1,23 @@
+// ShortcutBadge (VISUAL-DESIGN-SPEC shared primitive): compact right-aligned
+// token for keyboard shortcuts / primary affordance (Enter). Pure visual.
+import { Theme } from "../theme.slint";
+
+export component ShortcutBadge inherits Rectangle {
+    in property <string> label;
+    in property <bool> show: true;
+    in property <color> label-color: Theme.text-secondary;
+    height: 20px;
+    min-width: t.preferred-width + 12px;
+    border-radius: Theme.radius-small;
+    background: Theme.bg-surface-elevated;
+    border-width: 1px;
+    border-color: Theme.border-subtle;
+    visible: show && label != "";
+    t := Text {
+        x: 6px;
+        text: label;
+        color: label-color;
+        font-size: Theme.type-caption;
+        vertical-alignment: center;
+    }
+}

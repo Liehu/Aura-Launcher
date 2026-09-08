@@ -1,0 +1,68 @@
+{
+ "action_panel_us": {
+  "execute_bridge_us": {
+   "max": 2,
+   "p50": 0,
+   "p95": 0,
+   "p99": 0
+  },
+  "note": "non-UI cores of the Action Panel (paint excluded); iterations=10000; command with 50 actions, half disabled",
+  "panel_open_us": {
+   "max": 21,
+   "p50": 2,
+   "p95": 2,
+   "p99": 3
+  },
+  "selection_nav_us": {
+   "max": 0,
+   "p50": 0,
+   "p95": 0,
+   "p99": 0
+  }
+ },
+ "cold_start_us": 591,
+ "dataset": {
+  "apps": 200,
+  "files": 1000
+ },
+ "environment": {
+  "bench_version": 1,
+  "build": "release",
+  "commit": "nogit",
+  "cpu": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD",
+  "os": "Windows_NT"
+ },
+ "memory": {
+  "idle_private_bytes": 1495040,
+  "note": "private = commit charge via GetProcessMemoryInfo(PrivateUsage); 0 = unavailable",
+  "search_peak_private_bytes": 1900544
+ },
+ "search_app_us": {
+  "max": 511,
+  "p50": 7,
+  "p95": 7,
+  "p99": 11
+ },
+ "search_file_us": {
+  "max": 892,
+  "p50": 0,
+  "p95": 23,
+  "p99": 27
+ },
+ "targets": {
+  "action_panel_us": {
+   "panel_open_p95": 10000,
+   "selection_p95": 5000
+  },
+  "search_app_us": {
+   "p50": 5000,
+   "p95": 10000
+  },
+  "search_file_us": {
+   "p50": 20000,
+   "p95": 50000
+  }
+ },
+ "timestamp_unix_ms": 1788779738871,
+ "version": 1
+}

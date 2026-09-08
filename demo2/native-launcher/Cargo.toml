@@ -1,0 +1,101 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/launcher-config",
+    "crates/launcher-domain",
+    "crates/launcher-hotkey",
+    "crates/launcher-providers",
+    "crates/launcher-search",
+    "crates/launcher-context",
+    "crates/launcher-action",
+    "crates/launcher-ipc",
+    "crates/launcher-indexer",
+    "crates/launcher-workflow",
+    "crates/launcher-mcp",
+        "crates/launcher-runtime",
+        "crates/launcher-ai",
+    "crates/launcher-plugin-api",
+    "crates/launcher-plugin-host",
+    "crates/launcher-core",
+    "crates/launcher-ui",
+    "apps/launcher-app",
+    "apps/launcher-indexer-service",
+    "apps/example-mcp-server",
+    "apps/example-echo-plugin",
+    "apps/example-testplugins",
+    "apps/calculator-plugin",
+    "apps/calculator-plus",
+    "apps/launcher-bench",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+ureq = { version = "2", default-features = false, features = ["tls", "gzip"] }
+sha2 = "0.10"
+launcher-config = { path = "crates/launcher-config" }
+launcher-domain = { path = "crates/launcher-domain" }
+launcher-hotkey = { path = "crates/launcher-hotkey" }
+launcher-providers = { path = "crates/launcher-providers" }
+launcher-search = { path = "crates/launcher-search" }
+launcher-context = { path = "crates/launcher-context" }
+launcher-action = { path = "crates/launcher-action" }
+launcher-ipc = { path = "crates/launcher-ipc" }
+launcher-indexer = { path = "crates/launcher-indexer" }
+launcher-workflow = { path = "crates/launcher-workflow" }
+launcher-mcp = { path = "crates/launcher-mcp" }
+launcher-runtime = { path = "crates/launcher-runtime" }
+launcher-ai = { path = "crates/launcher-ai" }
+launcher-plugin-api = { path = "crates/launcher-plugin-api" }
+launcher-plugin-host = { path = "crates/launcher-plugin-host" }
+launcher-core = { path = "crates/launcher-core" }
+launcher-ui = { path = "crates/launcher-ui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+toml = "0.8"
+winreg = "0.55"
+lnk = { version = "0.6", features = ["binwrite", "unstable-save"] }
+png = "0.17"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "process", "time", "io-util", "macros", "sync"] }
+raw-window-handle = "0.6"
+slint = { version = "1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software", "accessibility", "raw-window-handle-06", "system-tray"] }
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_UI_Shell",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_Security_Cryptography",
+    "Win32_Security_Credentials",
+    "Win32_System_JobObjects",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Foundation",
+    "Foundation_Collections",
+    "Management_Deployment",
+    "ApplicationModel",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = true

@@ -1,0 +1,25 @@
+{
+  "stages": [
+    {
+      "delta_from_prev_bytes": 0,
+      "private_bytes": 692224,
+      "stage": "empty_core"
+    },
+    {
+      "delta_from_prev_bytes": 86016,
+      "private_bytes": 778240,
+      "stage": "plus_app_provider"
+    },
+    {
+      "delta_from_prev_bytes": 679936,
+      "private_bytes": 1458176,
+      "stage": "plus_file_provider_1k"
+    },
+    {
+      "delta_from_prev_bytes": 315392,
+      "private_bytes": 1773568,
+      "stage": "plus_history"
+    }
+  ],
+  "version": 1
+}

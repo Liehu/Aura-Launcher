@@ -1,0 +1,15 @@
+[package]
+name = "launcher-plugin-host"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-domain = { workspace = true }
+launcher-runtime = { workspace = true }
+launcher-ipc = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }

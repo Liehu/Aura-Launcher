@@ -1,0 +1,17 @@
+[package]
+name = "launcher-ai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-domain = { workspace = true }
+launcher-workflow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+ureq = { workspace = true }
+
+[dev-dependencies]
+launcher-mcp = { workspace = true }
+launcher-action = { workspace = true }

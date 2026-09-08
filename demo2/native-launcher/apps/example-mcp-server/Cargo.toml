@@ -1,0 +1,20 @@
+[package]
+name = "example-mcp-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+serde = { workspace = true }
+
+[[bin]]
+name = "mcp-calculator"
+path = "src/main.rs"
+
+[dev-dependencies]
+launcher-core = { workspace = true }
+launcher-domain = { workspace = true }
+launcher-action = { workspace = true }
+launcher-mcp = { workspace = true }
+launcher-workflow = { workspace = true }
+launcher-ai = { workspace = true }

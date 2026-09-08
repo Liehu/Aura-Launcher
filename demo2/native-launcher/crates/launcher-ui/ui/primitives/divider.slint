@@ -1,0 +1,8 @@
+// Divider (VISUAL-DESIGN-SPEC shared primitive, section 14): 1px subtle line.
+import { Theme } from "../theme.slint";
+
+export component Divider inherits Rectangle {
+    in property <length> thickness: 1px;
+    height: thickness;
+    background: Theme.border-subtle;
+}

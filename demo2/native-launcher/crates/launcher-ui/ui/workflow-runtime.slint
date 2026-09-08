@@ -1,0 +1,116 @@
+// WorkflowRuntime (UI-CONTRACT §13): observation-only runtime surface.
+// It renders host-derived step presentation; Enter/Esc events are forwarded
+// and never cancel submitted effects or decide retry/skip/re-resolve.
+import { Theme } from "theme.slint";
+import { StateSymbol } from "primitives/state-symbol.slint";
+import { FailureDetail } from "failure-detail.slint";
+import { DiagnosticDetails } from "diagnostic-details.slint";
+
+export struct WorkflowItem {
+    step-id: string,
+    symbol: string,
+    title: string,
+    state-text: string,
+    error: string,
+    current: bool,
+    // Level 3 diagnostics (Spec section 21): shown only on explicit request
+    execution-id: string,
+    failure-class: string,
+}
+
+export component WorkflowRuntime inherits Rectangle {
+    in property <[WorkflowItem]> items;
+    in property <string> title;
+    in property <string> status;
+    /// Level 3 diagnostic details (Spec section 21): only on explicit request
+    in property <bool> show-diagnostics: false;
+    /// Level 2: failing step detail (from the host presentation)
+    in property <string> failed-title;
+    in property <string> failed-reason;
+    in property <int> failed-attempt;
+    /// Level 3 lines (monospace), host-composed
+    in property <[string]> diagnostic-lines;
+    callback confirm();
+    callback dismiss();
+
+    background: Theme.bg-surface;
+    // content-driven (Spec v0.2): title row + step rows (Theme.row-workflow-step)
+    // + optional failure detail / diagnostics, all deterministic.
+    out property <length> content-height: Theme.space-2 * 2
+        + 24px + Theme.space-1
+        + items.length * (Theme.row-workflow-step + Theme.space-1)
+        + (failed-title != "" ? 44px + Theme.space-1 : 0px)
+        + (show-diagnostics ? diagnostic-lines.length * 16px + Theme.space-2 + Theme.space-1 : 0px);
+    height: content-height;
+
+    VerticalLayout {
+        padding: Theme.space-2;
+        spacing: Theme.space-1;
+
+        HorizontalLayout {
+            height: 24px;
+            spacing: Theme.space-2;
+            Text {
+                text: title;
+                color: Theme.text-primary;
+                font-size: Theme.type-title;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: status;
+                color: Theme.text-secondary;
+                font-size: Theme.type-caption;
+                vertical-alignment: center;
+            }
+        }
+
+        for w in items : Rectangle {
+            height: Theme.row-workflow-step;
+            HorizontalLayout {
+                padding-left: 6px;
+                spacing: Theme.space-2;
+                alignment: start;
+                StateSymbol {
+                    symbol: w.symbol;
+                    show: true;
+                    symbol-color: w.current ? Theme.accent-primary
+                        : (w.error != "" ? Theme.semantic-error : Theme.text-tertiary);
+                }
+                Text {
+                    text: w.title;
+                    color: Theme.text-primary;
+                    font-size: Theme.type-secondary;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Text {
+                    text: w.error != "" ? w.error : w.state-text;
+                    color: w.error != "" ? Theme.semantic-error : Theme.text-tertiary;
+                    font-size: Theme.type-diagnostic;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+            }
+            // Level 3 diagnostics (Spec section 21): explicit request only
+            if root.show-diagnostics && (w.error != "" || w.execution-id != "") : Text {
+                text: "⚙ " + w.step-id + (w.execution-id != "" ? " · " + w.execution-id : "") + (w.failure-class != "" ? " · " + w.failure-class : "");
+                color: Theme.text-tertiary;
+                font-size: Theme.type-diagnostic;
+                horizontal-alignment: right;
+            }
+        }
+
+        // Level 2: failing step detail (host presentation, UI-CONTRACT §21)
+        if failed-title != "" : FailureDetail {
+            height: 44px;
+            step-title: failed-title;
+            reason: failed-reason;
+            attempt: failed-attempt;
+        }
+
+        DiagnosticDetails {
+            show: root.show-diagnostics;
+            lines: diagnostic-lines;
+        }
+    }
+}

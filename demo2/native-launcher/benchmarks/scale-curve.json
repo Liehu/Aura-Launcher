@@ -1,0 +1,45 @@
+{
+  "scale_curve": [
+    {
+      "app_p95_us": 3920,
+      "cold_start_us": 7744,
+      "file_max_us": 6944,
+      "file_p50_us": 3429,
+      "file_p95_us": 6101,
+      "files": 10000,
+      "idle_private_bytes": 3657728,
+      "search_peak_private_bytes": 3907584
+    },
+    {
+      "app_p95_us": 85518,
+      "cold_start_us": 64699,
+      "file_max_us": 126271,
+      "file_p50_us": 53710,
+      "file_p95_us": 80621,
+      "files": 100000,
+      "idle_private_bytes": 4337664,
+      "search_peak_private_bytes": 4337664
+    },
+    {
+      "app_p95_us": 124456,
+      "cold_start_us": 96226,
+      "file_max_us": 179294,
+      "file_p50_us": 93767,
+      "file_p95_us": 127098,
+      "files": 250000,
+      "idle_private_bytes": 4976640,
+      "search_peak_private_bytes": 5042176
+    },
+    {
+      "app_p95_us": 399193,
+      "cold_start_us": 196238,
+      "file_max_us": 646114,
+      "file_p50_us": 214863,
+      "file_p95_us": 379179,
+      "files": 1000000,
+      "idle_private_bytes": 4714496,
+      "search_peak_private_bytes": 4771840
+    }
+  ],
+  "version": 1
+}

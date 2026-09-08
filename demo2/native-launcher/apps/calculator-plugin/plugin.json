@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "com.example.calculator",
+  "name": "Calculator Extended",
+  "version": "1.0.0",
+  "api_version": "0.1",
+  "runtime": {
+    "type": "process",
+    "executable": "plugin-calculator.exe"
+  },
+  "capabilities": [],
+  "timeout_ms": 2000,
+  "idle_timeout_ms": 10000
+}

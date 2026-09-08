@@ -1,0 +1,104 @@
+// ActionPanel (UI-CONTRACT §2.2/§17): the selected command's actions.
+// Same-window overlay; selection is Step-scoped state (panel-selected) and
+// execution requests are forwarded by action_id - the panel never executes.
+import { Theme } from "theme.slint";
+import { ActionItem, ActionRow } from "action-row.slint";
+import { StateSymbol } from "primitives/state-symbol.slint";
+export { ActionItem }
+
+export component ActionPanel inherits Rectangle {
+    in property <[ActionItem]> actions;
+    in-out property <int> panel-selected;
+    in property <string> command-title;
+    in property <string> command-subtitle;
+    in property <color> accent: Theme.accent-primary;
+    /// Action.ConfirmationPending substate (UI-CONTRACT section 12): when
+    /// true the panel shows the confirmation strip and no new execution
+    /// is armed until the originating session confirms.
+    in property <bool> confirmation-pending: false;
+    callback execute-action(string);
+
+    // content-driven (Spec v0.2): action rows (Theme.row-action) + header
+    // strip + optional confirmation strip; the window adds this via the
+    // height formula instead of a fixed window height.
+    out property <length> content-height: actions.length * Theme.row-action
+        + Theme.row-action
+        + (confirmation-pending ? Theme.row-action : 0px);
+    height: content-height;
+    background: Theme.bg-surface;
+
+    // header: the command these actions belong to
+    Rectangle {
+        y: 0; width: parent.width; height: Theme.row-action;
+        background: Theme.bg-input;
+        VerticalLayout {
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-3;
+            alignment: center;
+            Text {
+                text: command-title;
+                color: Theme.text-primary;
+                font-size: Theme.type-body;
+            }
+            Text {
+                text: command-subtitle;
+                color: Theme.text-secondary;
+                font-size: Theme.type-diagnostic;
+            }
+        }
+    }
+
+    // Confirmation strip (Spec section 18.1): warning accent + explicit
+    // Enter/Esc affordance; transient state, never persisted authorization
+    if confirmation-pending : Rectangle {
+        y: parent.height - 40px;
+        width: parent.width;
+        height: 40px;
+        background: Theme.bg-surface-elevated;
+        border-width: 1px;
+        border-color: Theme.border-warning;
+        HorizontalLayout {
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-3;
+            spacing: Theme.space-2;
+            alignment: start;
+            StateSymbol {
+                symbol: "⚠";
+                show: true;
+                symbol-color: Theme.border-warning;
+                size: 13px;
+            }
+            VerticalLayout { alignment: center;
+                Text {
+                    text: "Confirmation required";
+                    color: Theme.text-primary;
+                    font-size: Theme.type-caption;
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            VerticalLayout { alignment: center;
+                Text {
+                    text: "Enter Confirm    Esc Cancel";
+                    color: Theme.border-warning;
+                    font-size: Theme.type-diagnostic;
+                    horizontal-alignment: right;
+                }
+            }
+        }
+    }
+
+    VerticalLayout {
+        y: 40px;
+        height: parent.height - 40px;
+        padding: Theme.space-1;
+        for a[ai] in actions : ActionRow {
+            item: a;
+            selected: ai == panel-selected;
+            accent: root.accent;
+            execute => {
+                panel-selected = ai;
+                root.execute-action(a.action-id);
+            }
+        }
+    }
+}

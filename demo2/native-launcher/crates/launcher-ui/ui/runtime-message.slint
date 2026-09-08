@@ -1,0 +1,36 @@
+// RuntimeMessage (UI-CONTRACT §15 / review 39): Level 1 inline status.
+// Pure presentation: accepts a message + a presentation severity ("info" /
+// "warning" / "error" / "success"). It never receives FailureClass or
+// native errors - the severity mapping happened in the FailureClassifier
+// before it reached this component.
+import { Theme } from "theme.slint";
+
+export component RuntimeMessage inherits Rectangle {
+    in property <string> message;
+    /// presentation kind: "info" | "warning" | "error" | "success"
+    in property <string> severity: "info";
+    height: Theme.row-status;
+    background: Theme.bg-surface-elevated;
+    visible: message != "";
+
+    symbol := Text {
+        x: Theme.space-2;
+        text: severity == "error" ? "⚠"
+            : severity == "warning" ? "⚠"
+            : severity == "success" ? "✓"
+            : "⌛";
+        color: severity == "error" ? Theme.semantic-error
+            : severity == "warning" ? Theme.semantic-warning
+            : severity == "success" ? Theme.semantic-success
+            : Theme.semantic-info;
+        font-size: Theme.type-diagnostic;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 28px;
+        text: message;
+        color: severity == "error" ? Theme.semantic-error : Theme.text-secondary;
+        font-size: Theme.type-diagnostic;
+        vertical-alignment: center;
+    }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "launcher-runtime"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+
+[[bin]]
+name = "rt-child"
+path = "src/bin/rt_child.rs"

@@ -1,0 +1,49 @@
+// FailureDetail (UI-CONTRACT §21 Level 2): the failing step, a user-facing
+// reason, and the attempt counter. Pure presentation - it consumes the
+// classified values handed over by the runtime; it never decides retry or
+// re-resolve.
+import { Theme } from "theme.slint";
+
+export component FailureDetail inherits Rectangle {
+    in property <string> step-title;
+    in property <string> reason;
+    in property <int> attempt: 1;
+    in property <int> max-attempts: 2;
+
+    height: 44px;
+    background: Theme.bg-surface-elevated;
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-2;
+        alignment: start;
+        Text {
+            text: "⚠";
+            color: Theme.semantic-error;
+            font-size: Theme.type-secondary;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: step-title;
+                color: Theme.text-primary;
+                font-size: Theme.type-caption;
+            }
+            Text {
+                text: reason;
+                color: Theme.text-secondary;
+                font-size: Theme.type-diagnostic;
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        VerticalLayout { alignment: center;
+            Text {
+                text: "Attempt " + attempt + " / " + max-attempts;
+                color: Theme.text-tertiary;
+                font-size: Theme.type-diagnostic;
+                horizontal-alignment: right;
+            }
+        }
+    }
+}

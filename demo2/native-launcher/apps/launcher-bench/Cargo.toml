@@ -1,0 +1,17 @@
+[package]
+name = "launcher-bench"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-core = { workspace = true }
+launcher-domain = { workspace = true }
+launcher-indexer = { workspace = true }
+launcher-search = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+launcher-ui = { workspace = true }
+launcher-action = { workspace = true }

@@ -1,0 +1,43 @@
+import { LineEdit } from "std-widgets.slint";
+
+// SearchBox (UI-CONTRACT section 9.1): text entry, placeholder, focus, and
+// search affordance only. It never submits or interprets the query.
+import { Theme } from "theme.slint";
+
+export component SearchBox inherits Rectangle {
+    in property <string> placeholder: "Search...";
+    /// current query text (Progressive Disclosure: the window keys off
+    /// empty vs non-empty to decide Initial vs Results presentation)
+    out property <string> text <=> input.text;
+    callback query-changed(string);
+    callback accepted(string);
+    /// Intercepted BEFORE the LineEdit's internal cursor handling, so the
+    /// window can drive list/panel navigation with Up/Down while the input
+    /// keeps Left/Right and text editing.
+    callback key-pressed(KeyEvent) -> EventResult;
+
+    background: Theme.bg-input;
+    border-radius: Theme.radius-medium;
+    height: Theme.row-search;
+
+    forward-focus: input;
+    input := LineEdit {
+        // plain-container children default to preferred size + centered:
+        // pin the LineEdit to the SearchBox or it renders as a small box
+        width: parent.width;
+        y: (parent.height - self.height) / 2;
+        font-size: Theme.type-input;
+        placeholder-text: root.placeholder;
+        key-pressed(event) => { root.key-pressed(event) }
+        edited(text) => { root.query-changed(text); }
+        accepted(text) => { root.accepted(text); }
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+
+    public function set-text(t: string) {
+        input.text = t;
+    }
+}

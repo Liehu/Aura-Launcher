@@ -1,0 +1,10 @@
+[package]
+name = "launcher-context"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-domain = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }

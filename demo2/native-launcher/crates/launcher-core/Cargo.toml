@@ -1,0 +1,29 @@
+[package]
+name = "launcher-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-domain = { workspace = true }
+rusqlite = { workspace = true }
+launcher-search = { workspace = true }
+launcher-indexer = { workspace = true }
+launcher-plugin-host = { workspace = true }
+launcher-plugin-api = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+launcher-workflow = { workspace = true }
+launcher-action = { workspace = true }
+launcher-mcp = { workspace = true }
+launcher-ai = { workspace = true }
+
+[dev-dependencies]
+launcher-action = { workspace = true }
+launcher-config = { workspace = true }
+launcher-providers = { workspace = true }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Diagnostics_ToolHelp",
+] }

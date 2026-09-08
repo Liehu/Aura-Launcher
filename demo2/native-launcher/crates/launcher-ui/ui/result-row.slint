@@ -1,0 +1,74 @@
+// ResultRow (UI-CONTRACT §11 / review 38): presentation only. It receives a
+// ResultItem + `selected` flag and renders them; it never decides which
+// command is executable and never derives primary (that is Action-layer).
+import { Theme } from "theme.slint";
+import { SelectedMarker } from "primitives/selected-marker.slint";
+
+export struct ResultItem {
+    command-id: string,
+    title: string,
+    subtitle: string,
+    icon: string,
+    score: string,
+    // P2.1-E5: async-loaded icon (empty image = placeholder, no reflow —
+    // the 20px slot is always reserved)
+    icon-data: image,
+}
+
+export component ResultRow inherits Rectangle {
+    in property <ResultItem> item;
+    in property <bool> selected;
+    callback execute();
+
+    height: Theme.row-main;
+    background: selected ? Theme.bg-selected : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-2;
+        alignment: start;
+
+        SelectedMarker { show: root.selected; }
+
+        // P2.1-E5: reserved icon slot — always 20px so text never reflows
+        Rectangle {
+            width: 20px;
+            Image {
+                source: item.icon-data;
+                width: parent.height;
+                height: parent.height;
+                image-fit: contain;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: item.title;
+                color: Theme.text-primary;
+                font-size: Theme.type-title;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: item.subtitle;
+                color: Theme.text-secondary;
+                font-size: Theme.type-secondary;
+                vertical-alignment: center;
+                overflow: elide;
+                width: 320px;
+            }
+        }
+    }
+
+    TouchArea {
+        clicked => { root.execute(); }
+    }
+}

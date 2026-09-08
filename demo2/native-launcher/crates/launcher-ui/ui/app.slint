@@ -1,0 +1,360 @@
+import { Theme } from "theme.slint";
+import { SelectedMarker } from "primitives/selected-marker.slint";
+import { StateSymbol } from "primitives/state-symbol.slint";
+import { ShortcutBadge } from "primitives/shortcut-badge.slint";
+import { Divider } from "primitives/divider.slint";
+import { ActionItem, ActionPanel } from "action-panel.slint";
+import { WorkflowItem, WorkflowRuntime } from "workflow-runtime.slint";
+import { SearchBox } from "search-box.slint";
+import { ResultItem, ResultList } from "result-list.slint";
+import { ContextHint } from "context-hint.slint";
+import { StatusLine } from "status-line.slint";
+import { RuntimeMessage } from "runtime-message.slint";
+import { FailureDetail } from "failure-detail.slint";
+import { DiagnosticDetails } from "diagnostic-details.slint";
+
+// re-export so the Rust side can set the resolution-adaptive ui-scale
+export { Theme }
+
+
+
+// Tray icon: keeps the Slint event loop alive while the popup is hidden and
+// offers left-click summon + quit menu (ported from demo1).
+export component TrayIcon inherits SystemTrayIcon {
+    icon: @image-url("tray.png");
+    tooltip: "Native Launcher";
+
+    callback show-requested();
+    callback quit-requested();
+    callback workflow-demo-requested();
+
+    clicked => { root.show-requested(); }
+
+    Menu {
+        MenuItem {
+            title: "显示启动器";
+            activated => { root.show-requested(); }
+        }
+        MenuItem {
+            title: "运行示例工作流";
+            activated => { root.workflow-demo-requested(); }
+        }
+        MenuItem {
+            title: "退出";
+            activated => { root.quit-requested(); }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    // VISUAL-DESIGN-SPEC v0.2: width fixed at the default (min 480 / max 960
+    // reserved for future resize); height is CONTENT-DRIVEN, never fixed:
+    //   height = padding-window + search(36) + gap + rows*44 + gap
+    //          + context(28) + status(28) + padding-window
+    //          + ActionPanel.content-height + WorkflowRuntime.content-height
+    width: Theme.win-width-default;
+    height: root.window-height;
+    always-on-top: true;
+    no-frame: true;
+    background: Theme.bg-canvas;
+    title: "Launcher";
+
+    // ---- Progressive Disclosure (Spec v0.2 §17/§20) ----
+    // Initial (empty query): search box ONLY - no results area, no empty
+    // state, no context/footer. Results appear after the user types; Action
+    // / Workflow are exclusive modes that REPLACE the main content.
+    property <bool> in-action: root.panel-visible && root.actions.length > 0;
+    property <bool> in-workflow: root.wf-visible;
+    property <bool> in-main: !root.in-action && !root.in-workflow;
+    property <bool> has-query: search.text != "";
+    property <bool> show-results: root.in-main && root.has-query;
+
+    // Visible result rows: default 6, clamped to [min 4, max 8]
+    property <int> visible-rows: Math.max(Theme.rows-visible-min,
+        Math.min(root.results.length, Theme.rows-visible-max));
+
+    // ---- Content-driven height (Spec v0.2 §3/§21): discrete per state ----
+    // H0 Initial        = padding*2 + search(36)
+    // H1/H2 Main+query  = padding*2 + search + rows*44 (or empty 2 rows)
+    //                   + optional context(28, when results exist)
+    // H3 Action         = padding*2 + ActionPanel.content-height
+    // H5 Workflow       = padding*2 + WorkflowRuntime.content-height
+    // + optional status(28) in every state when a message is present
+    property <length> mode-height:
+        root.in-action ? panel.content-height
+        : root.in-workflow ? wf.content-height
+        : Theme.row-search
+          + (root.has-query
+              ? (root.results.length > 0
+                  ? root.visible-rows * Theme.row-main + Theme.space-1
+                  : 2 * Theme.row-main)
+              : 0px)
+          + (root.in-main && root.has-query && root.results.length > 0
+              && root.context-hint != "" ? Theme.row-context : 0px);
+    property <length> status-height: root.status != "" ? Theme.row-status : 0px;
+    property <length> window-height: Theme.padding-window * 2
+        + root.mode-height + root.status-height;
+
+    in property <[ResultItem]> results;
+    in-out property <int> selected-index;
+    in property <color> accent;
+
+    // MVP3.1 Action Panel: same-window mode switch (main <-> action), no
+    // second window, no overlay hierarchy (review 18 section 17).
+    in property <[ActionItem]> actions;
+    in-out property <int> panel-selected;
+    in-out property <bool> panel-visible;
+    in property <string> status;
+    in property <string> status-severity;
+    in property <[string]> diagnostic-lines;
+    in property <string> wf-failed-title;
+    in property <string> wf-failed-reason;
+    in property <int> wf-failed-attempt;
+    /// Action.ConfirmationPending substate (UI-CONTRACT section 12)
+    in property <bool> confirmation-pending;
+    /// Level 3 diagnostic details toggle (Ctrl+D while the surface is open)
+    in-out property <bool> wf-diagnostics;
+    in property <string> context-hint;
+    // MVP4.1 Workflow Runtime Surface (UI-CONTRACT section 13)
+    in property <[WorkflowItem]> wf-items;
+    in property <string> wf-title;
+    in property <string> wf-status;
+    in-out property <bool> wf-visible;
+    callback query-changed(string);
+    callback execute(string);
+    callback selection-changed(string);
+    callback panel-toggled();
+    callback panel-closed();
+    callback panel-nav(int);
+    callback action-shortcut(string);
+    callback execute-action(string, string);
+    callback workflow-confirm();
+    callback workflow-dismiss();
+    callback dismissed();
+    callback favorite-toggle();
+
+    keys := FocusScope {
+        // must be an ANCESTOR of the input so unhandled keys (Esc/arrows)
+        // bubble into this handler even while the LineEdit has focus.
+        // FocusScope does not propagate the window size to its children -
+        // without these, the layout would collapse to the LineEdit's
+        // preferred (tiny) width and center in the window.
+        width: parent.width;
+        height: parent.height;
+        //
+        // capture phase: runs BEFORE the focused LineEdit sees the key, so
+        // Up/Down can drive the list/panel instead of the caret. Left/Right
+        // (and everything else) are rejected here and keep working as text
+        // caret keys inside the input.
+        key-pressed(event) => {
+            // fired when this scope itself holds focus (Action/Workflow
+            // modes hide the search box; focus-keys() moved focus here)
+            if (root.wf-visible) {
+                if (event.text == Key.Escape) {
+                    root.wf-visible = false;
+                    root.wf-diagnostics = false;
+                    root.workflow-dismiss();
+                } else if (event.modifiers.control && event.text == "d") {
+                    root.wf-diagnostics = !root.wf-diagnostics;
+                } else if (event.text == Key.Return || event.text == " ") {
+                    root.workflow-confirm();
+                }
+                accept
+            } else if (event.text == Key.Escape) {
+                if (root.panel-visible) {
+                    root.panel-visible = false;
+                    root.panel-closed();
+                } else {
+                    root.dismissed();
+                }
+                accept
+            } else if (event.modifiers.control && event.text == "d") {
+                // P2.2-A: toggle favorite on the selected result (Ctrl+D is
+                // only taken by workflow diagnostics while wf-visible)
+                root.favorite-toggle();
+                accept
+            } else if (event.text == Key.Return && root.panel-visible) {
+                // panel mode: Enter executes the selected (enabled) action by
+                // id - the search box is hidden in this mode, so its accepted()
+                // cannot fire
+                if (root.actions.length > 0
+                    && root.panel-selected < root.actions.length
+                    && root.actions[root.panel-selected].enabled) {
+                    root.execute-action(
+                        root.results[root.selected-index].command-id,
+                        root.actions[root.panel-selected].action-id);
+                }
+                accept
+            } else if (event.text == Key.DownArrow) {
+                if (root.panel-visible) {
+                    root.panel-nav(1);
+                } else if (root.selected-index + 1 < root.results.length) {
+                    root.selected-index += 1;
+                    root.selection-changed(root.results[root.selected-index].command-id);
+                }
+                accept
+            } else if (event.text == Key.UpArrow) {
+                if (root.panel-visible) {
+                    root.panel-nav(-1);
+                } else if (root.selected-index > 0) {
+                    root.selected-index -= 1;
+                    root.selection-changed(root.results[root.selected-index].command-id);
+                }
+                accept
+            } else if (event.modifiers.control && event.text == Key.DownArrow) {
+                if (!root.panel-visible && root.actions.length > 0) {
+                    root.panel-selected = 0;
+                    root.panel-visible = true;
+                    root.panel-toggled();
+                }
+                accept
+            } else {
+                reject
+            }
+        }
+
+    }
+
+    VerticalLayout {
+        // Slint centers children of plain containers at their PREFERRED size:
+        // without explicit fill, the whole layout collapses to the LineEdit's
+        // intrinsic width and centers (the "tiny search box" bug).
+        width: parent.width;
+        height: parent.height;
+
+        // Main Mode: SearchBox (review 38 - text entry only; submit logic
+        // stays in this window's callbacks)
+        search := SearchBox {
+            visible: root.in-main;
+            // main-mode navigation, intercepted inside the LineEdit BEFORE
+            // its cursor handling (SearchBox.key-pressed contract)
+            key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    root.dismissed();
+                    accept
+                } else if (event.text == Key.DownArrow && event.modifiers.control) {
+                    if (!root.panel-visible && root.actions.length > 0) {
+                        root.panel-selected = 0;
+                        root.panel-visible = true;
+                        root.panel-toggled();
+                    }
+                    accept
+                } else if (event.text == Key.DownArrow) {
+                    if (root.selected-index + 1 < root.results.length) {
+                        root.selected-index += 1;
+                        root.selection-changed(root.results[root.selected-index].command-id);
+                    }
+                    accept
+                } else if (event.text == Key.UpArrow) {
+                    if (root.selected-index > 0) {
+                        root.selected-index -= 1;
+                        root.selection-changed(root.results[root.selected-index].command-id);
+                    }
+                    accept
+                } else {
+                    reject
+                }
+            }
+            query-changed(text) => { root.query-changed(text); }
+            accepted(text) => {
+                if (root.panel-visible) {
+                    // panel mode: Enter executes the selected (enabled) action
+                    if (root.actions.length > 0
+                        && root.panel-selected < root.actions.length
+                        && root.actions[root.panel-selected].enabled) {
+                        root.execute-action(
+                            root.results[root.selected-index].command-id,
+                            root.actions[root.panel-selected].action-id);
+                    }
+                } else if (root.results.length > 0) {
+                    // main mode: Enter executes the primary action (first Ready)
+                    root.execute(root.results[root.selected-index].command-id);
+                }
+            }
+        }
+        // Main Mode: ResultList (empty vs rows presentation); height follows
+        // the visible-row count, extra rows scroll inside the Flickable
+        ResultList {
+            visible: root.show-results;
+            results: root.results;
+            selected-index: root.selected-index;
+            visible-rows: root.visible-rows;
+            show-empty: root.has-query;
+            selection-changed(id) => { root.selection-changed(id); }
+            execute(id) => { root.execute(id); }
+        }
+    }
+
+    // Context Hint (above the status strip; hidden while panel/workflow is open)
+    ContextHint {
+        y: parent.height - Theme.padding-window - root.status-height - self.height;
+        width: parent.width;
+        visible: root.in-main && root.has-query && root.results.length > 0;
+        hint: root.context-hint;
+        affordance: root.actions.length > 0 ? "Ctrl+\u{2193} Actions" : "";
+        show-affordance: root.actions.length > 0;
+    }
+
+    // Status line (Main.Error / Searching / execution feedback):
+    // RuntimeMessage consumes message + presentation severity only
+    RuntimeMessage {
+        y: parent.height - Theme.padding-window - self.height;
+        width: parent.width;
+        visible: root.status != "";
+        message: root.status;
+        severity: root.status-severity;
+    }
+
+    // Action Panel (UI-CONTRACT section 17): selected command's actions;
+    // execution requests are forwarded by action_id. Always instantiated so
+    // the window height formula can read content-height; visibility is a flag.
+    panel := ActionPanel {
+        y: parent.height - Theme.padding-window - root.status-height - self.height;
+        width: parent.width;
+        visible: root.in-action;
+        actions: root.actions;
+        panel-selected <=> root.panel-selected;
+        confirmation-pending: root.confirmation-pending;
+        command-title: root.results.length > 0 ? root.results[root.selected-index].title : "";
+        command-subtitle: root.results.length > 0 ? root.results[root.selected-index].subtitle : "";
+        accent: root.accent;
+        execute-action(action-id) => {
+            root.execute-action(
+                root.results[root.selected-index].command-id,
+                action-id);
+        }
+    }
+
+    // Workflow Runtime Surface (UI-CONTRACT section 13): observation only
+    wf := WorkflowRuntime {
+        y: parent.height - Theme.padding-window - root.status-height - self.height;
+        width: parent.width;
+        visible: root.wf-visible;
+        items: root.wf-items;
+        title: root.wf-title;
+        status: root.wf-status;
+        failed-title: root.wf-failed-title;
+        failed-reason: root.wf-failed-reason;
+        failed-attempt: root.wf-failed-attempt;
+        diagnostic-lines: root.diagnostic-lines;
+        show-diagnostics: root.wf-diagnostics;
+        confirm() => { root.workflow-confirm(); }
+        dismiss() => { root.workflow-dismiss(); }
+    }
+
+    public function reset-query() {
+        search.set-text("");
+    }
+
+    // Called by Rust after every popup show so keyboard focus lands in the
+    // search input (win32 SetFocus alone does not restore Slint item focus).
+    public function focus-input() {
+        search.focus-input();
+    }
+
+    // Action/Workflow surfaces hide the search box; keyboard events must be
+    // captured by the root FocusScope, which requires it to hold focus.
+    public function focus-keys() {
+        keys.focus();
+    }
+}

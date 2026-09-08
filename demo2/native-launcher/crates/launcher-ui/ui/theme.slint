@@ -1,0 +1,117 @@
+// theme.slint — VISUAL-DESIGN-SPEC-v0.1 §2/§3/§4/§5: the single source of
+// truth for colors, radius, spacing, and typography. Components MUST use
+// these tokens; scattered hex literals are forbidden (Spec Rule 1).
+// Semantic names are theme-neutral so Light/High-Contrast themes can reuse
+// the same component set (Spec §41).
+
+export global Theme {
+    // Resolution-adaptive scale (Spec v0.2 addendum): derived by the host
+    // from the primary screen's logical height (1080p = 1.0, quantized to
+    // 0.25, clamped [1.0, 2.0]); every size token below scales with it, so
+    // high-resolution displays get a proportionally larger UI.
+    in-out property <float> ui-scale: 1.0;
+    // ---- Surface (Spec §2.1) ----
+    out property <color> bg-canvas: #0B1017;             // launcher background
+    out property <color> bg-surface: #111822;            // main content surface
+    out property <color> bg-surface-elevated: #16202C;   // elevated / hover surface
+    out property <color> bg-input: #0F1721;              // search box
+    out property <color> bg-selected: #173F73;           // selected row
+    out property <color> bg-selected-hover: #1B4A86;     // selected + hover
+    out property <color> bg-disabled: #10161E;           // disabled row
+
+    // ---- Border (Spec §2.2) ----
+    out property <color> border-default: #26323F;
+    out property <color> border-subtle: #1E2833;
+    out property <color> border-focus: #4DA3FF;          // keyboard focus
+    out property <color> border-warning: #FFB547;        // confirmation
+    out property <color> border-error: #FF5C5C;
+
+    // ---- Text (Spec §2.3) ----
+    out property <color> text-primary: #E6ECF2;
+    out property <color> text-secondary: #A6B0BF;
+    out property <color> text-tertiary: #778395;
+    out property <color> text-disabled: #5A6470;
+    out property <color> text-inverse: #081019;          // on accent background
+
+    // ---- Accent / Semantic (Spec §2.4) ----
+    // accent-primary may be overridden by user config (theme_color) at the
+    // injection point in launcher-app; #4DA3FF is the Dark theme default.
+    out property <color> accent-primary: #4DA3FF;
+    out property <color> accent-primary-hover: #63B0FF;
+    out property <color> semantic-success: #36C77A;
+    out property <color> semantic-warning: #FFB547;
+    out property <color> semantic-error: #FF5C5C;
+    out property <color> semantic-info: #5AA9FF;
+
+    // ---- Radius (Spec §5) ----
+    out property <length> radius-small: 4px;   // badge / shortcut
+    out property <length> radius-medium: 6px;  // search / row
+    out property <length> radius-large: 8px;   // launcher surface (P1: window)
+
+    // ---- Spacing scale (Spec §4) ----
+    out property <length> space-1: 4px * ui-scale;
+    out property <length> space-2: 8px * ui-scale;
+    out property <length> space-3: 12px * ui-scale;
+    out property <length> space-4: 16px * ui-scale;
+    out property <length> space-5: 20px * ui-scale;
+    out property <length> space-6: 24px * ui-scale;
+    out property <length> space-8: 32px * ui-scale;
+
+    // ---- Window sizing (Spec v0.2: content-driven height, not fixed) ----
+    // height = padding-window + row-search + gap + visible-rows * row-main
+    //        + gap + row-context + row-status + padding-window (+ surfaces)
+    out property <length> win-width-default: 620px * ui-scale;
+    out property <length> win-width-min: 480px * ui-scale;   // reserved: future resize
+    out property <length> win-width-max: 960px * ui-scale;   // reserved: future resize
+    out property <int> rows-visible-default: 6;
+    out property <int> rows-visible-min: 4;
+    out property <int> rows-visible-max: 8;
+    out property <length> row-search: 36px * ui-scale;
+    out property <length> padding-window: 8px * ui-scale;
+
+    // ---- Row heights (Spec §4.2) ----
+    out property <length> row-main: 44px * ui-scale;
+    out property <length> row-action: 40px * ui-scale;
+    out property <length> row-context: 28px * ui-scale;
+    out property <length> row-status: 28px * ui-scale;
+    out property <length> row-workflow-step: 36px * ui-scale;
+
+    // ---- Typography sizes (Spec §3.2) ----
+    out property <length> type-input: 18px * ui-scale;
+    out property <length> type-title: 16px * ui-scale;
+    out property <length> type-body: 14px * ui-scale;
+    out property <length> type-secondary: 13px * ui-scale;
+    out property <length> type-caption: 12px * ui-scale;
+    out property <length> type-diagnostic: 11px * ui-scale;
+
+    // ============================================================
+    // Theme Tokens v0.2 (P1-E.2, review 60 §40) — additive aliases
+    // over the v0.1 scale above. Existing v0.1 tokens are frozen:
+    // VR-001..010 baselines depend on them byte-for-byte.
+    // ============================================================
+
+    // ---- Spacing (§40: named steps instead of bare indexes) ----
+    out property <length> spacing-xs: 4px * ui-scale;
+    out property <length> spacing-sm: 8px * ui-scale;
+    out property <length> spacing-md: 12px * ui-scale;
+    out property <length> spacing-lg: 20px * ui-scale;
+    out property <length> spacing-xl: 32px * ui-scale;
+
+    // ---- Radius (§40: short aliases) ----
+    out property <length> radius-sm: 4px;
+    out property <length> radius-md: 6px;
+
+    // ---- State palette (§40): status colors reserved for StateBadge /
+    // StateSymbol rendering; components must not pick ad-hoc status colors.
+    out property <color> state-ready: #5AA9FF;
+    out property <color> state-disabled: #5A6470;
+    out property <color> state-running: #4DA3FF;
+    out property <color> state-success: #36C77A;
+    out property <color> state-warning: #FFB547;
+    out property <color> state-error: #FF5C5C;
+
+    // ---- Panel widths (§40): launcher-surface widths per context ----
+    out property <length> panel-width-main: 620px * ui-scale;
+    out property <length> panel-width-action: 620px * ui-scale;
+    out property <length> panel-width-diagnostics: 560px * ui-scale;
+}

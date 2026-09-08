@@ -1,0 +1,55 @@
+[package]
+name = "example-testplugins"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+launcher-plugin-api = { workspace = true }
+launcher-plugin-host = { workspace = true }
+launcher-ipc = { workspace = true }
+launcher-domain = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "plugin-normal"
+path = "src/bin/normal.rs"
+
+[[bin]]
+name = "plugin-slow"
+path = "src/bin/slow.rs"
+
+[[bin]]
+name = "plugin-crash"
+path = "src/bin/crash.rs"
+
+[[bin]]
+name = "plugin-malformed"
+path = "src/bin/malformed.rs"
+
+[[bin]]
+name = "plugin-flood"
+path = "src/bin/flood.rs"
+
+[[bin]]
+name = "plugin-badversion"
+path = "src/bin/badversion.rs"
+
+[[bin]]
+name = "plugin-badecho"
+path = "src/bin/badecho.rs"
+
+[[bin]]
+name = "plugin-initmalformed"
+path = "src/bin/initmalformed.rs"
+
+[[bin]]
+name = "plugin-badstdout"
+path = "src/bin/badstdout.rs"
+
+[[bin]]
+name = "plugin-bigframe"
+path = "src/bin/bigframe.rs"
+
+[[bin]]
+name = "plugin-childspawner"
+path = "src/bin/childspawner.rs"

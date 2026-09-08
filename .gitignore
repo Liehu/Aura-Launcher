@@ -1,0 +1,21 @@
+# Rust build cache & outputs (regenerable)
+target/
+*.rlib
+*.pdb
+
+# Generated release/test artifacts (rebuild via scripts/package.py,
+# scripts/make_msix.py, release_gate.py)
+artifacts/
+vrtest/
+
+# Archives / debug dumps
+*.zip
+*.msix
+*.log
+
+# Tool-local state
+.mimosa/
+
+# OS noise
+Thumbs.db
+Desktop.ini
