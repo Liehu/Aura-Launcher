@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-09（**P2.8 开工**，评审与 6 批次计划见 `docs/history/102-p28-kickoff.md`；P2.7 Batch 1 见 101 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：705 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-09（**P2.9 开工**，评审与 6 批次计划见 `docs/history/103-p29-kickoff.md`；P2.8 计划见 102 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：705 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -330,6 +330,15 @@ P28           评审 + 6 批次计划冻结（102 号）：           📋 Batch
               Repository/UI → 集成/QA/Gate
               ※ 地基已在：P2.4-D CLI staged install、
               trust/capability 持久化、backup/restore
+
+── P2.9 System Integration & Automation ────────────────────────────
+P29           评审 + 6 批次计划冻结（103 号）：           📋 Batch 1 待启动
+              契约基座 → File/Clipboard → Window/
+              Process → Shell/URI/Notification →
+              Policy/Confirmation → Race/Security/Gate
+              ※ 本质是既有分散能力的 Adapter 收敛，
+              非新执行通道；与 P2.6/P2.7/P2.8 可并行
+              ※ 四阶段共约 20 批次待做，建议交错推进
 
 P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
            (E01 Provider 失败/成功路径→结构化诊断 +
