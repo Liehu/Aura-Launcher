@@ -1,0 +1,11 @@
+{
+  "cycles_requested": 200,
+  "p50_us": 307,
+  "p95_us": 19656,
+  "scope": "WM_HOTKEY dispatch -> popup shown + recentered (physical key -> OS dispatch is out of process scope)",
+  "show_samples": 100,
+  "target_us": {
+    "p50": 20000,
+    "p95": 35000
+  }
+}

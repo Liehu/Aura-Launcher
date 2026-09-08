@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-08（RC1 挂账收口，见 `docs/history/89-rc1-closure.md`）。基线：623 tests 全绿 / zero warnings / topology 17 crates + 8 apps / S0=S1=S2=0 / VR byte-identical。
+> **更新**：2026-09-08（**1.0 GA Closure**，见 `docs/history/90-ga-closure.md`；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：623+ tests 全绿 / zero warnings / topology 17 crates + 8 apps / S0=S1=S2=0 / G01~G12 PASS（manifest=released，签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 

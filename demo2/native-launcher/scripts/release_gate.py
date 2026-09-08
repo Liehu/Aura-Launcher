@@ -440,9 +440,18 @@ def main():
     # ---- Manifest + report.
     tests_passed, _ = parse_tests((ART / "test" / "cargo-test.txt").read_text(encoding="utf-8"))
     blocked = any(s.status == "FAIL" for s in steps if s.required)
+    # GA-7: once GA closure is complete, LAUNCHER_RELEASE_STATUS=released
+    # marks the manifest as a GA release (only honored when nothing is blocked).
+    status_override = os.environ.get("LAUNCHER_RELEASE_STATUS", "")
+    if blocked:
+        status = "blocked"
+    elif status_override in ("released", "release-candidate"):
+        status = status_override
+    else:
+        status = "release-candidate"
     manifest = {
         "version": "1.0.0",
-        "status": "blocked" if blocked else "release-candidate",
+        "status": status,
         "tests": tests_passed,
         "warnings": 0,
         "topology": "pass",

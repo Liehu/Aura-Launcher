@@ -40,6 +40,7 @@
 | `81-p22-batches-response.md` | P2.2-A~E 核心子集（Favorites/Cache/Context/Quarantine/Health） | ✅ 565 tests |
 | `82-p22f-response.md` | P2.2-F Cross-Batch Contract Closure（CacheKey 补齐/Context 代际/合并保元数据） | ✅ 566 tests |
 | `89-rc1-closure.md` | **RC1 挂账收口**：Registry backup/restore + update_handoff 协议与启动接线 + MSIX 打包（无签名）+ 30min soak | ✅ 623 tests |
+| `90-ga-closure.md` | **1.0 GA Closure**：GA-1/2/3/4/5/7 完成（文档统一/hotkey P50 307µs/10k UI soak/indexer crash 注入/CI/released manifest）；GA-6 签名暂缓 | ✅ gate 全 PASS |
 
 ## 权威文档（不在本目录）
 

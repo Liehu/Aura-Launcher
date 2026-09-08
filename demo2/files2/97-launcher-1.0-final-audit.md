@@ -119,13 +119,13 @@
 
 | # | 项 | 类型 | 动作 |
 |---|---|---|---|
-| GA-1 | **文档状态统一（Documentation Freeze）** | 文档漂移 | README 去掉 "v0.1 MVP" 改为 "1.0 RC1"；TESTING.md 的 62/62、各文档 355/582/623 测试数统一为单一权威出处（建议以 release_gate 产出为准并在文档中引用）；01-design-spec 的 FTS5 表述按本审计 A-§2.1 裁决改写（1.0=bounded LIKE，FTS5→P2.5）；ARCHITECTURE.md 同步 17 crates 现状 |
-| GA-2 | **Hotkey latency 仪表化** | Test Plan §8.1 / Release Acceptance 硬项 | 实现 Ctrl+Space→visible popup 的 P50/P95 测量（目标 ≤20ms/≤35ms），入档 benchmarks；至少给出"实测值或明确已知限制" |
-| GA-3 | **10,000 show/hide UI soak** | Test Plan §9.3 | 在 D5 popup soak 基础上扩到 10k 循环跑一次入档（基础设施已有） |
-| GA-4 | **Indexer crash/restart 故障注入自动化** | Test Plan §10 / §16 | indexer-service 崩溃→重启→索引 eventual consistent 的自动用例（coordinator 已支持重启语义，补驱动） |
-| GA-5 | **CI（GitHub Actions）** | Spec §2.1 / Test Plan §14 | `.github/workflows`：cargo build 零警告 + cargo test --workspace + check_topology；Release profile 手动触发 release_gate |
-| GA-6 | **MSIX 证书签名路径** | P2.3-G 尾款 | 取得代码签名证书并 signtool 签名打包产物（打包与 handoff 消费端已就绪）；至少把"无签名=已知限制"写入 RELEASE-MANIFEST |
-| GA-7 | **EVIDENCE/MANIFEST 重生成 + GA 宣告** | Release Eng | 上述完成后重跑 release_gate.py，将 EVIDENCE.json / RELEASE-MANIFEST 的 status 从 release-candidate 翻为 released，并在 PROJECT-HANDBOOK §7 记录 |
+| GA-1 | **文档状态统一（Documentation Freeze）** | 文档漂移 | ✅ **已完成（2026-09-08）**：README 头部改 1.0 RC1 + 权威基线（历史章节标注为快照）；TESTING.md 加权威基线注记；01-design-spec §2.1 加 FTS5 裁决修订注记（1.0=bounded LIKE，FTS5→P2.5）；手册/审计交叉引用补齐 |
+| GA-2 | **Hotkey latency 仪表化** | Test Plan §8.1 / Release Acceptance 硬项 | ✅ **已完成（2026-09-08）**：`LAUNCHER_HOTKEY_BENCH` 走真实 dispatch→show 管线，报告写 benchmarks/hotkey-latency.json。实测 **P50 307µs / P95 19.7ms**（目标 ≤20ms/≤35ms，PASS） |
+| GA-3 | **10,000 show/hide UI soak** | Test Plan §9.3 | ✅ **已完成（2026-09-08）**：10,000 循环，Private 7.2→8.9MB，增长 +1.7MB<10MB 预算，peak==final 无漂移（benchmarks/showhide-soak-10k.json） |
+| GA-4 | **Indexer crash/restart 故障注入自动化** | Test Plan §10 / §16 | ✅ **已完成（2026-09-08）**：`scripts/indexer_crash_restart_test.py`（真实 service 进程 hard-kill→重启→search 恢复+计数单调，PASS）；CI 已接线。注：进程 spawn 的 Rust 版用例被本地安全 hook 误判拦截，采用 hook 建议的 argv-list/shell=False Python 形态 |
+| GA-5 | **CI（GitHub Actions）** | Spec §2.1 / Test Plan §14 | ✅ **已完成（2026-09-08）**：`.github/workflows/ci.yml`（windows-latest：零警告 build、topology、workspace tests、crash/restart 注入；clippy 暂为 advisory） |
+| GA-6 | **MSIX 证书签名路径** | P2.3-G 尾款 | ⏸ **用户裁决暂缓**：无签名证书。打包产物（无签名 msix）与 handoff 消费端已就绪，取得证书后 signtool 签名即可 |
+| GA-7 | **EVIDENCE/MANIFEST 重生成 + GA 宣告** | Release Eng | ✅ **已完成（2026-09-08）**：release_gate 增加 `LAUNCHER_RELEASE_STATUS=released` 覆盖（blocked 时无效）；G01~G12 全量重跑后 manifest status=released（benchmarks/release-gate-ga-run.log） |
 
 **明确不阻塞 GA**（即使 Test Plan 有名字）：100 并发专项、fuzz 框架、Pinyin、100k 随机 query 固化、fmt/clippy 入 gate（建议随手做，非硬项）。
 
@@ -153,3 +153,13 @@
 3. **Failed 为空**：不存在"做过但没做成"的项；所有未完成项都是有序推迟，不要"补做" D/E 区的项来"修复 1.0"。
 4. GA 工作顺序 = GA-1 → GA-7 顺序执行；每完成一项更新本文件勾选状态。
 5. 一切新工作默认落在 P2.4 及以后，开工前先读本文件对应行确认不在 GA Blocker 清单里。
+
+---
+
+# G. GA Closure 记录（2026-09-08）
+
+GA-1/2/3/4/5/7 已完成（见 §D 表内勾选），GA-6（签名）经用户裁决暂缓至取得证书。
+GA 后版本状态：**Launcher 1.0 GA（签名待补的已知限制记录于 RELEASE-MANIFEST）**。
+GA Closure 批次记录：`docs/history/90-ga-closure.md`；证据：`benchmarks/`
+（hotkey-latency / showhide-soak-10k / indexer-crash-restart / release-gate-ga-run）。
+后续工作入口 = §E 推迟清单（P2.4 起）。

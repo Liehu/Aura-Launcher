@@ -14,7 +14,7 @@ mod snapshot;
 mod visual_scenarios;
 mod workflow_service;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -840,6 +840,8 @@ struct HotkeyDeps {
     guards: Arc<Mutex<Vec<GlobalHotkey>>>,
     config_path: PathBuf,
     reload_state: Arc<Mutex<ReloadState>>,
+    /// GA-2 bench collector; None unless LAUNCHER_HOTKEY_BENCH is set.
+    bench: Option<(Arc<HotkeyBench>, PathBuf, usize)>,
 }
 
 #[derive(Debug, Clone)]
@@ -847,6 +849,39 @@ struct ReloadState {
     mtime: Option<std::time::SystemTime>,
     hotkey: String,
     result_limit: usize,
+}
+
+/// GA-2 hotkey latency bench (Test Plan §8.1): when LAUNCHER_HOTKEY_BENCH is
+/// set, synthetic hotkey toggles drive the real dispatch→show pipeline and
+/// per-show "dispatch→ready" samples are aggregated into a P50/P95 report.
+#[derive(Default)]
+struct HotkeyBench {
+    samples_us: Mutex<Vec<u64>>,
+}
+
+impl HotkeyBench {
+    fn record(&self, ready_us: u64) {
+        self.samples_us.lock().expect("bench samples").push(ready_us);
+    }
+
+    fn write_report(&self, report: &Path, cycles_requested: usize) {
+        let mut s = self.samples_us.lock().expect("bench samples").clone();
+        s.sort_unstable();
+        let pct = |p: usize| s.get(s.len() * p / 100).copied().unwrap_or(0);
+        let body = serde_json::json!({
+            "cycles_requested": cycles_requested,
+            "show_samples": s.len(),
+            "p50_us": pct(50),
+            "p95_us": pct(95),
+            "target_us": { "p50": 20_000, "p95": 35_000 },
+            "scope": "WM_HOTKEY dispatch -> popup shown + recentered (physical key -> OS dispatch is out of process scope)",
+        });
+        if let Err(e) = std::fs::write(report, serde_json::to_string_pretty(&body).unwrap()) {
+            tracing::error!(error = %e, path = %report.display(), "hotkey bench report write failed");
+        } else {
+            tracing::info!(path = %report.display(), p50_us = pct(50), p95_us = pct(95), samples = s.len(), "hotkey.bench.report");
+        }
+    }
 }
 
 /// Re-read the config when its mtime changed since the last load (MUST-2):
@@ -897,11 +932,39 @@ fn register_hotkey(hotkey_str: &str, deps: &HotkeyDeps) {
         std::sync::mpsc::channel::<Result<(), launcher_hotkey::HotkeyError>>();
     match launcher_hotkey::parse_hotkey(hotkey_str) {
         Ok(parsed) => {
-            let guard = GlobalHotkey::spawn(parsed, tx, result_tx);
+            let guard = GlobalHotkey::spawn(parsed, tx.clone(), result_tx);
             deps.guards.lock().expect("hotkey guards").push(guard);
         }
         Err(e) => {
             tracing::error!(error = %e, "cannot parse configured hotkey, hotkey disabled");
+        }
+    }
+    // GA-2 bench driver: synthetic toggles through the real receive loop.
+    // Started once even if the hotkey is re-registered by config reload.
+    if let Some((bench, report, cycles)) = deps.bench.clone() {
+        static BENCH_STARTED: std::sync::atomic::AtomicBool =
+            std::sync::atomic::AtomicBool::new(false);
+        if !BENCH_STARTED.swap(true, Ordering::SeqCst) {
+            std::thread::Builder::new()
+                .name("hotkey-bench".into())
+                .spawn(move || {
+                    for _ in 0..cycles {
+                        let _ = tx.send(());
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                    }
+                    // wait for the show half of the toggles to be processed
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+                    while bench.samples_us.lock().expect("bench samples").len() * 2 < cycles
+                        && std::time::Instant::now() < deadline
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    bench.write_report(&report, cycles);
+                    let _ = slint::invoke_from_event_loop(|| {
+                        let _ = slint::quit_event_loop();
+                    });
+                })
+                .ok();
         }
     }
     let err_str = hotkey_str.to_string();
@@ -943,12 +1006,17 @@ fn register_hotkey(hotkey_str: &str, deps: &HotkeyDeps) {
                         let show_started = std::time::Instant::now();
                         let _ = ui.show();
                         deps.visible.store(true, Ordering::SeqCst);
+                        let dispatch_to_ready_us = dispatch_at.elapsed().as_micros() as u64;
                         tracing::info!(
                             cold,
                             t1_dispatch_to_show_us = t1_us,
                             t2_show_call_us = show_started.elapsed().as_micros() as u64,
+                            dispatch_to_ready_us,
                             "popup.latency"
                         );
+                        if let Some((bench, _, _)) = &deps.bench {
+                            bench.record(dispatch_to_ready_us);
+                        }
                         #[cfg(windows)]
                         foreground::take_foreground("Launcher");
                         foreground::recenter_and_repaint(ui.window());
@@ -1650,6 +1718,18 @@ fn main() -> anyhow::Result<()> {
     });
 
     // configurable global hotkey (MUST-2: re-registrable for hot reload)
+    // GA-2: hotkey latency bench (Test Plan §8.1) — opt-in via env
+    let hotkey_bench = std::env::var("LAUNCHER_HOTKEY_BENCH").ok().map(|p| {
+        let cycles: usize = std::env::var("LAUNCHER_HOTKEY_BENCH_CYCLES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(200);
+        (
+            Arc::new(HotkeyBench::default()),
+            PathBuf::from(p),
+            cycles,
+        )
+    });
     let hotkey_deps = HotkeyDeps {
         ui_weak: ui_weak.clone(),
         visible: visible.clone(),
@@ -1659,6 +1739,7 @@ fn main() -> anyhow::Result<()> {
         state: state.clone(),
         guards: Arc::new(Mutex::new(Vec::new())),
         config_path: cfg_path.clone(),
+        bench: hotkey_bench,
         reload_state: Arc::new(Mutex::new(ReloadState {
             mtime: std::fs::metadata(&cfg_path).and_then(|m| m.modified()).ok(),
             hotkey: cfg.hotkey.clone(),

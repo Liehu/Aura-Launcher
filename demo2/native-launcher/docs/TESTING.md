@@ -1,6 +1,11 @@
-# TESTING.md — 测试情况（2026-09-03）
+# TESTING.md — 测试情况（2026-09-08，1.0 RC1 → GA Closure）
 
-对应测试基线 `demo2/files2/03-test-plan-v0.1.md`。当前状态：**62/62 测试通过**，`cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings` 零告警。
+> 以下各节是按时间序积累的覆盖明细；**当前权威基线：623 tests 全绿 /
+> zero warnings / topology 通过**（release_gate G01~G12 + 逐条验收见
+> `demo2/files2/97-launcher-1.0-final-audit.md` §B）。历史快照数字（62/62 等）
+> 保留原样，不代表当前状态。
+
+对应测试基线 `demo2/files2/03-test-plan-v0.1.md`。
 
 ## 运行方式
 

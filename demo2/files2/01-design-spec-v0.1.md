@@ -1,6 +1,10 @@
 # Native Launcher v0.1 设计规范
 
-状态：Draft / Architecture Baseline
+状态：Architecture Baseline（历史文档）
+> **1.0 修订注记（2026-09-08，权威裁决见 `97-launcher-1.0-final-audit.md` A-§2.1）**：
+> §2.1 "Search = SQLite FTS5" 在 1.0 的实际实现为 **SQLite metadata + bounded
+> LIKE + deterministic ranking**（file search p95 23µs @ 214k files，达标）。
+> FTS5 / 内容索引正式推迟 P2.5，不得按本节原文重写 Indexer。其余 §2.1 条目按原样交付。
 版本：0.1.0
 面向：Agentic Coding
 平台：Windows-first

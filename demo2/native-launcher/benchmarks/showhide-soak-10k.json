@@ -1,0 +1,12 @@
+{
+  "test": "LAUNCHER_SOAK_SHOWHIDE=10000 (03-test-plan §9.3 / GA-3)",
+  "date": "2026-09-08",
+  "cycles": 10000,
+  "initial_private_bytes": 7221248,
+  "peak_private_bytes": 8921088,
+  "final_private_bytes": 8921088,
+  "growth_bytes": 1699840,
+  "budget_bytes": 10485760,
+  "verdict": "PASS (bounded growth, peak == final — no linear drift)",
+  "raw_log": "benchmarks/showhide-soak-10k.log"
+}

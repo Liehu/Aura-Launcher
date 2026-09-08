@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: demo2/native-launcher
+
+jobs:
+  gate:
+    runs-on: windows-latest
+    env:
+      LAUNCHER_PYTHON: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\registry
+            ~\.cargo\git
+            demo2\native-launcher\target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('demo2/native-launcher/Cargo.lock') }}
+
+      # G01 equivalent: full build, zero warnings tolerated
+      - name: Build (zero warnings)
+        shell: bash
+        run: |
+          cargo build --workspace 2>&1 | tee build.log
+          ! grep -qi "warning" build.log
+
+      # G03: topology + SDK dependency guards
+      - name: Topology check
+        run: python scripts/check_topology.py
+
+      # G02 equivalent: full workspace behavior regression
+      - name: Tests
+        run: cargo test --workspace
+
+      # GA-4: indexer crash/restart fault injection (uses debug service binary)
+      - name: Indexer crash/restart injection
+        run: python scripts/indexer_crash_restart_test.py
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        continue-on-error: true # advisory until existing lints are triaged (GA-1 follow-up)

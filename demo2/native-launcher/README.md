@@ -1,14 +1,21 @@
-# Native Launcher (v0.1 MVP)
+# Native Launcher 1.0
 
-Keyboard-first, native-rendering Windows launcher built from the v0.1 design
-baseline (see `demo2/files2/` for the source documents). Rust + Slint (software
+Keyboard-first, native-rendering Windows launcher. Rust + Slint (software
 renderer), no Electron/CEF/WebView. Indexer and plugin runtime are separate
 boundaries; plugin processes are spawned on demand and shut down when idle.
 
-## 完成状态（2026-09-03）
+## 完成状态（2026-09-08，1.0 RC1 → GA Closure）
 
-**MVP P0 全部完成 + P1 部分**，62/62 测试通过，门禁（fmt / clippy -D warnings /
-test）全绿，真实 GUI 端到端验证通过。
+**Native Launcher 1.0.0 RC1**：核心产品完成、核心架构冻结、平台基础设施完成。
+当前权威基线：**623 tests 全绿 / zero warnings / topology 17 crates + 8 apps /
+adversarial S0=S1=S2=0 / Release Gate G01~G12 PASS / 30min 资源 soak PASS /
+10,000 次 show/hide soak PASS / hotkey→popup P50 307µs · P95 19.7ms（目标
+20ms/35ms）**。逐条验收基线见 `demo2/files2/97-launcher-1.0-final-audit.md`
+（权威 1.0 baseline：Closed / Core Slice / Experimental / Planned / Failed 映射 +
+GA 前必须项 + P2.4 正式推迟清单）；里程碑全景见 `docs/PROJECT-HANDBOOK.md`。
+
+> 下方历史里程碑（M0~M5、MVP2~4.x、P2.x）按时间序保留，其中测试数字是当时快照；
+> 当前权威基线以本节为准。
 
 | 里程碑 | 状态 | 说明 |
 |---|---|---|
