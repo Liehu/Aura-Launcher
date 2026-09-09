@@ -18,6 +18,8 @@ use std::sync::{Arc, Mutex};
 use launcher_ai::agent::AgentExecutionHost as _;
 use launcher_ai::agent_loop::{ApprovalSink, LoopStop, TurnExecutor, run_agent};
 use launcher_ai::approval::{ApprovalDecision, Decision as ApprovalChoice};
+use launcher_ai::memory::{RunRecord, RunMemory, SessionMemory};
+use launcher_ai::privacy::RemoteAiPolicy;
 use launcher_ai::agent_session::AgentSession;
 use launcher_ai::agent_session_store::{AgentSessionRecord, AgentSessionStore};
 use launcher_ai::clarification::ClarificationPolicy;
@@ -243,6 +245,17 @@ pub fn start_agent_run(
         );
         return;
     };
+    // E05 local-first gate: remote endpoints need the explicit opt-in.
+    let policy = if llm_cfg.allow_remote_data {
+        RemoteAiPolicy::allow_remote()
+    } else {
+        RemoteAiPolicy::default()
+    };
+    if let Err(notice) = policy.ensure_remote_allowed() {
+        tracing::info!("agent.remote_blocked");
+        crate::set_status(ui_weak, format!("⚠ {notice}"));
+        return;
+    }
     let provider = provider_from_config(&llm_cfg);
     let run_id = format!("agent-{}", std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -284,6 +297,23 @@ pub fn start_agent_run(
         .name("agent-run".into())
         .spawn(move || {
             let catalog = catalog_json(&state2);
+            // E01: bounded session memory supplies recent goals as context
+            let context = {
+                let mem = memory_slot().lock().expect("memory lock");
+                let recent: String = mem
+                    .entries("global")
+                    .iter()
+                    .rev()
+                    .take(5)
+                    .map(|e| format!("- {}", e.text))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                launcher_ai::privacy::sanitize_untrusted(&recent, 1024)
+            };
+            memory_slot()
+                .lock()
+                .expect("memory lock")
+                .push("global", "goal", &goal2, now_ms());
             let mut session = AgentSession::new(&run_id2, MAX_TURNS);
             let mut exec = CoreTurnExecutor { state: state2.clone() };
             let llm = |prompt: String| -> Result<String, String> {
@@ -303,7 +333,7 @@ pub fn start_agent_run(
             let stop = run_agent(
                 &mut session,
                 &goal2,
-                "", // context: host-supplied; v1 runs context-free
+                &context, // E01: sanitized recent goals from session memory
                 &catalog,
                 &llm,
                 &mut exec,
@@ -330,6 +360,14 @@ pub fn start_agent_run(
                 }
             };
             tracing::info!(run = %run_id2, stop = ?stop, turns = session.turns, "agent.finished");
+            // E02: record the run outcome in bounded run memory
+            runs_slot().lock().expect("run memory lock").record(RunRecord {
+                run_id: run_id2.clone(),
+                goal: goal2.clone(),
+                status: format!("{stop:?}"),
+                turns: session.turns,
+                at_ms: now_ms(),
+            });
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = ui_weak2.upgrade() {
                     ui.set_wf_visible(false);
@@ -395,4 +433,18 @@ fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// E01: bounded session memory (goals become context for later runs).
+static MEMORY: std::sync::OnceLock<Mutex<SessionMemory>> = std::sync::OnceLock::new();
+
+fn memory_slot() -> &'static Mutex<SessionMemory> {
+    MEMORY.get_or_init(|| Mutex::new(SessionMemory::new()))
+}
+
+/// E02: bounded run memory.
+static RUNS: std::sync::OnceLock<Mutex<RunMemory>> = std::sync::OnceLock::new();
+
+fn runs_slot() -> &'static Mutex<RunMemory> {
+    RUNS.get_or_init(|| Mutex::new(RunMemory::new()))
 }

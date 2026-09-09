@@ -61,6 +61,11 @@ pub struct LlmConfig {
     pub base_url: String,
     /// Model name, e.g. `"qwen2.5:7b"`.
     pub model: String,
+    /// E05 local-first gate: remote endpoints send the request text (and
+    /// bounded context) off-machine, so remote use is OFF until this is
+    /// explicitly set true. Default false = agent unavailable with notice.
+    #[serde(default)]
+    pub allow_remote_data: bool,
     /// Per-request timeout in seconds.
     #[serde(default = "default_llm_timeout")]
     pub timeout_secs: u64,
