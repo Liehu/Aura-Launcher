@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-09（**P2.8 Batch 1**，见 `docs/history/111-p28-batch1-foundation.md`；P2.6 Batch 6 见 110 号；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：734 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-09（**P2.8 Batch 2**，见 `docs/history/112-p28-batch2-resolver.md`；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：740 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -348,8 +348,10 @@ P28-Batch1    Foundation：PluginIdentity + SHA-256       ✅ Batch 1
               Integrity（自包含实现+标准向量）+
               生命周期状态机（Broken 不得直接 Enabled）
               —— 111 号
-P28-Batch2-6  Package+Resolver/事务化 Install/           ⏳ 未开始
-              Signature+Trust/Repository/UI/收口
+P28-Batch2    Dependency Resolver + InstallPlan          ✅ Batch 2
+              （确定性拓扑/缺失/环可解释）—— 112 号
+P28-Batch3-6  事务化 Install/Signature+Trust/            ⏳ 未开始
+              Repository/UI/收口
 
 ── P2.9 System Integration & Automation ────────────────────────────
 P29           评审 + 6 批次计划冻结（103 号）：           📋 Batch 1 待启动
@@ -402,7 +404,7 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 734 全绿）
+cargo test --workspace          # 行为回归闸门（当前 740 全绿）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
 python scripts/release_gate.py    # Release Gate（G01~G14：1.0 + P2.4/P2.5 conformance + evidence/manifest）

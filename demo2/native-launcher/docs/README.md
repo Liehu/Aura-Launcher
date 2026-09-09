@@ -63,6 +63,7 @@
 | `109-p26-batch5-approval.md` | **P2.6 Batch 5**：Human Approval（C01 契约/C02 存储/C03 面向/C04 执行安全：approve 执行、reject 跳过、restart-safe） | ✅ 727 tests |
 | `110-p26-batch6-expiry-triggers.md` | **P2.6 Batch 6**：C05 审批过期/取消（fail-closed）+ D01/D02 Trigger 契约与持久 FIFO 队列 | ✅ 729 tests |
 | `111-p28-batch1-foundation.md` | **P2.8 Batch 1**：Foundation（PluginIdentity + SHA-256 Integrity + 生命周期状态机 fail-closed） | ✅ 734 tests |
+| `112-p28-batch2-resolver.md` | **P2.8 Batch 2**：Dependency Resolver + InstallPlan（确定性拓扑/缺失/环可解释/共享依赖单次） | ✅ 740 tests |
 | `105-p29-batch2-file-adapter.md` | **P2.9 Batch 2**：File Adapter（SystemCommand → 既有 host-owned Action 映射，fail-closed） | ✅ 711 tests |
 | `106-p26-batch2-engine.md` | **P2.6 Batch 2**：执行语义（A03 WaitAll Join/skip 穿透 + A04 条件引擎 + A05 VariableStore） | ✅ 715 tests |
 | `107-p26-batch3-durable-store.md` | **P2.6 Batch 3**：B01 Durable Run Store（SQLite checkpoint 持久化/按状态恢复扫描/损坏重建）+ A06 契约 kit | ✅ 718 tests |
