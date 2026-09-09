@@ -49,6 +49,27 @@ fn default_mcp_transport() -> String {
     "stdio".into()
 }
 
+/// P2.7 host wiring: OpenAI-compatible LLM endpoint for the Agent Loop
+/// (local Ollama / remote gateway). The API key is NEVER part of config
+/// (review 55 §38) — it is read from the `LAUNCHER_LLM_API_KEY` env var at
+/// run time. Absent section = Agent commands surface a clear
+/// "not configured" status instead of running.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LlmConfig {
+    /// e.g. `"http://127.0.0.1:11434/v1"` (Ollama). Non-loopback plaintext
+    /// http is rejected by the provider (same transport policy as MCP).
+    pub base_url: String,
+    /// Model name, e.g. `"qwen2.5:7b"`.
+    pub model: String,
+    /// Per-request timeout in seconds.
+    #[serde(default = "default_llm_timeout")]
+    pub timeout_secs: u64,
+}
+
+fn default_llm_timeout() -> u64 {
+    60
+}
+
 /// Application configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -86,6 +107,9 @@ pub struct AppConfig {
     /// Configured MCP servers (MVP4.3, Spec section 21).
     #[serde(rename = "mcp.servers", default)]
     pub mcp_servers: Vec<McpServerConfig>,
+    /// P2.7: LLM backend for the Agent Loop (absent = Agent disabled).
+    #[serde(default)]
+    pub llm: Option<LlmConfig>,
 }
 
 fn default_result_limit() -> usize {
@@ -116,6 +140,7 @@ impl Default for AppConfig {
             portable_roots: Vec::new(),
             python_path: None,
             mcp_servers: Vec::new(),
+            llm: None,
         }
     }
 }
@@ -299,6 +324,7 @@ mod tests {
             portable_roots: Vec::new(),
             python_path: None,
             mcp_servers: Vec::new(),
+            llm: None,
         };
         save(&t.0, &cfg).unwrap();
         let loaded = load_or_create(&t.0).unwrap();

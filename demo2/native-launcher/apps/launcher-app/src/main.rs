@@ -7,6 +7,7 @@
 //! tray icon resident + quit, registry Uninstall app enumeration, recent
 //! files provider, panic hook, rolling file logs.
 
+mod agent_service;
 mod autostart;
 mod editor_surface;
 mod keyboard_walkthrough;
@@ -178,6 +179,8 @@ fn build_core(
     // settings entry point (MUST-2): searchable "Open Settings" command
     let config_file = launcher_config::config_path()?;
     core.register(Box::new(SettingsProvider::new(&config_file)));
+    // P2.7-C03: agent trigger commands (query prefix "agent ")
+    core.register(Box::new(AgentCommandProvider));
 
     // the indexer connection doubles as the bounded history sink (WAL)
     core.set_history(indexer);
@@ -849,6 +852,49 @@ impl launcher_core::Provider for SettingsProvider {
     }
 }
 
+/// P2.7-C03 trigger source: the `agent ` query prefix surfaces an "Ask AI
+/// Agent" command whose target is the goal text. Execution is routed
+/// host-side (provider_id == "agent", same namespace-routing pattern as
+/// workflows/settings) into `agent_service::start_agent_run` — the engine
+/// never sees an agent command as an Open target.
+struct AgentCommandProvider;
+
+impl launcher_core::Provider for AgentCommandProvider {
+    fn id(&self) -> &str {
+        "agent"
+    }
+    fn query(&mut self, q: &launcher_domain::QueryContext) -> Vec<Command> {
+        let raw = q.raw.trim();
+        let goal = raw
+            .strip_prefix("agent ")
+            .or_else(|| raw.strip_prefix("Agent "))
+            .map(str::trim);
+        let Some(goal) = goal.filter(|g| !g.is_empty()) else {
+            return vec![];
+        };
+        vec![Command {
+            id: "agent:run".into(),
+            title: format!("Ask AI Agent: {goal}"),
+            subtitle: Some("Runs an LLM-planned agent through the action pipeline (Esc on the panel cancels between steps)".into()),
+            icon: None,
+            provider_id: "agent".into(),
+            score: 0.0,
+            keywords: vec!["agent".into(), "ai".into()],
+            category: launcher_domain::Category::Command,
+            actions: vec![launcher_domain::Action {
+                kind: launcher_domain::ActionKind::Execute,
+                payload: None,
+                id: Some("run".into()),
+                title: Some("Run agent".into()),
+                disabled_reason: None,
+                shortcut: None,
+                confirmation_required: false,
+            }],
+            target: Some(goal.to_string()),
+        }]
+    }
+}
+
 /// Everything the hotkey listener needs, so registration can be repeated
 /// when the user changes the hotkey in the config file.
 #[derive(Clone)]
@@ -1136,13 +1182,21 @@ fn execute_action_by_id(
         st.current_results
             .iter()
             .find(|c| c.id == command_id)
-            .filter(|c| c.provider_id == "workflows" || c.provider_id == "settings")
+            .filter(|c| {
+                c.provider_id == "workflows" || c.provider_id == "settings" || c.provider_id == "agent"
+            })
             .map(|c| (c.provider_id.clone(), c.target.clone()))
             .unwrap_or_default()
     };
     match (routed_provider.as_str(), routed_target) {
         ("workflows", Some(file)) => {
             run_installed_workflow(state, ui_weak, file);
+            return;
+        }
+        ("agent", Some(goal)) => {
+            // P2.7-C03: the goal (query text after the prefix) drives the
+            // Agent Loop; the surface + cancel are owned by the service
+            agent_service::start_agent_run(state, ui_weak, goal);
             return;
         }
         ("settings", Some(path)) => {
@@ -1565,6 +1619,9 @@ fn main() -> anyhow::Result<()> {
         autostart::set_autostart(true)?;
     }
     info!(hotkey = %cfg.hotkey, theme = %cfg.theme_color, autostart = cfg.autostart, "config loaded");
+    // P2.7: capture the LLM endpoint (None = agent commands degrade to a
+    // "not configured" status, never a crash)
+    agent_service::set_llm_config(cfg.llm.clone());
 
     let db_dir = data_dir();
     // P2.2-E startup health marker: detect a previous interrupted startup
@@ -1938,6 +1995,10 @@ fn main() -> anyhow::Result<()> {
             let state = state.clone();
             let ui_weak = ui_weak.clone();
             move || {
+                // P2.7-C06: dismissing while an agent run is displayed also
+                // arms the between-step cancel flag (never interrupts an
+                // in-flight effect)
+                crate::agent_service::cancel_active_agent();
                 if let Ok(st) = state.lock() {
                     info!(
                         results_gen = st.results_gen,
