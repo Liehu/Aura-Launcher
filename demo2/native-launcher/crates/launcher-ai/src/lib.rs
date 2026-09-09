@@ -9,6 +9,7 @@
 
 pub mod agent;
 pub mod agent_contract;
+pub mod intent;
 pub mod llm;
 pub mod planner;
 pub mod prompt;
