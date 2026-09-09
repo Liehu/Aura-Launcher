@@ -58,6 +58,84 @@ pub fn window_command(hwnd: u64, title: &str, operation: &str, origin: &str) -> 
     })
 }
 
+
+// ---- P2.9 Batch 4: Shell/URI/Notification/Power taxonomy ----
+
+/// §18/§24/§25: shell/uri/notification/power operations + risk.
+pub fn shell_risk(operation: &str) -> Option<SystemRisk> {
+    match operation {
+        "open_uri" | "notify" => Some(SystemRisk::Info),
+        "run_command" => Some(SystemRisk::Destructive),
+        _ => None,
+    }
+}
+
+pub fn power_risk(operation: &str) -> Option<SystemRisk> {
+    match operation {
+        "lock" => Some(SystemRisk::Reversible),
+        "sleep" | "restart" | "shutdown" => Some(SystemRisk::Destructive),
+        _ => None,
+    }
+}
+
+/// Build a validated URI command (scheme-validated, §18).
+pub fn uri_command(scheme: &str, origin: &str) -> Option<SystemCommand> {
+    if scheme.is_empty() || !scheme.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+        return None;
+    }
+    Some(SystemCommand {
+        capability: SystemCapability::Uri,
+        operation: "open_uri".into(),
+        target: SystemTarget::Uri {
+            scheme: scheme.into(),
+        },
+        risk: SystemRisk::Info,
+        origin: origin.into(),
+    })
+}
+
+/// Build a validated power command (fail-closed on unknown ops).
+pub fn power_command(operation: &str, origin: &str) -> Option<SystemCommand> {
+    Some(SystemCommand {
+        capability: SystemCapability::Power,
+        operation: operation.into(),
+        target: SystemTarget::System {
+            setting: operation.into(),
+        },
+        risk: power_risk(operation)?,
+        origin: origin.into(),
+    })
+}
+
+#[cfg(test)]
+mod batch4_tests {
+    use super::*;
+
+    #[test]
+    fn shell_and_power_risk_taxonomy() {
+        assert_eq!(shell_risk("open_uri"), Some(SystemRisk::Info));
+        assert_eq!(shell_risk("run_command"), Some(SystemRisk::Destructive));
+        assert_eq!(shell_risk("anything_else"), None);
+        assert_eq!(power_risk("lock"), Some(SystemRisk::Reversible));
+        assert_eq!(power_risk("shutdown"), Some(SystemRisk::Destructive));
+        assert_eq!(power_risk("reboot"), None);
+    }
+
+    #[test]
+    fn uri_command_validates_scheme() {
+        let c = uri_command("https", "test").unwrap();
+        assert!(c.validate().is_ok());
+        assert!(uri_command("", "test").is_none());
+        assert!(uri_command("UPPER", "test").is_none());
+    }
+
+    #[test]
+    fn power_command_fail_closed() {
+        assert!(power_command("lock", "test").unwrap().validate().is_ok());
+        assert!(power_command("possess", "test").is_none());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
