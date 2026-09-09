@@ -14,6 +14,7 @@ fn node(id: &str) -> WorkflowNode {
         action_ref: format!("cmd:{id}"),
         output_variables: vec![],
         condition: None,
+        approval: false,
     }
 }
 
@@ -76,7 +77,7 @@ fn b03_runs_to_completion_with_checkpoints() {
         executed: vec![],
         fail_on: None,
     };
-    let stop = run_graph(&g, &store, "run-ok", &mut ex, None);
+    let stop = run_graph(&g, &store, "run-ok", &mut ex, None, None);
     assert_eq!(stop, SchedulerStop::Finished);
     assert_eq!(ex.executed, vec!["a", "b", "c"]);
     let cp = store.load("run-ok").unwrap().unwrap();
@@ -94,7 +95,7 @@ fn b05_failure_stops_at_checkpoint() {
         executed: vec![],
         fail_on: Some("b".into()),
     };
-    let stop = run_graph(&g, &store, "run-fail", &mut ex, None);
+    let stop = run_graph(&g, &store, "run-fail", &mut ex, None, None);
     match stop {
         SchedulerStop::Failed { node_id, .. } => assert_eq!(node_id, "b"),
         other => panic!("expected Failed, got {other:?}"),
@@ -138,7 +139,7 @@ fn b06_pause_resume_continues_from_checkpoint() {
         ran: 0,
         cancel: cancel.clone(),
     };
-    let stop = run_graph(&g, &store, "run-pause", &mut ex, Some(cancel.as_ref()));
+    let stop = run_graph(&g, &store, "run-pause", &mut ex, Some(cancel.as_ref()), None);
     assert_eq!(stop, SchedulerStop::Paused);
     let cp = store.load("run-pause").unwrap().unwrap();
     assert_eq!(cp.status, RunStatus::Paused);
@@ -150,7 +151,7 @@ fn b06_pause_resume_continues_from_checkpoint() {
         executed: vec![],
         fail_on: None,
     };
-    let stop = run_graph(&g, &store, "run-pause", &mut ex2, None);
+    let stop = run_graph(&g, &store, "run-pause", &mut ex2, None, None);
     assert_eq!(stop, SchedulerStop::Finished);
     assert_eq!(ex2.executed, vec!["c"], "finished nodes NOT re-executed");
     std::fs::remove_dir_all(&dir).ok();
@@ -181,7 +182,7 @@ fn step_outputs_flow_into_variables() {
             Ok(serde_json::json!({"status": "ok"}))
         }
     }
-    let stop = run_graph(&g, &store, "run-vars", &mut Outputter, None);
+    let stop = run_graph(&g, &store, "run-vars", &mut Outputter, None, None);
     assert_eq!(stop, SchedulerStop::Finished);
     let cp = store.load("run-vars").unwrap().unwrap();
     assert_eq!(cp.variables["status"]["status"], "ok");

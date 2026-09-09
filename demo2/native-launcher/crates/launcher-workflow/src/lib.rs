@@ -10,6 +10,7 @@
 //!   PluginBroker routing), returning classified failures.
 
 pub mod proposal;
+pub mod approval;
 pub mod durable;
 pub mod engine;
 pub mod scheduler;

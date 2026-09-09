@@ -8,6 +8,7 @@
 //! implementations resolve through the existing ReferenceResolver →
 //! ActionResolver chain). Conditions/variables are control flow only.
 
+use crate::approval::ApprovalStatus;
 use crate::durable::{RunCheckpoint, RunStatus, RunStore};
 use crate::engine::{evaluate, ready_nodes, VariableStore};
 use crate::graph::{ConditionExpr, WorkflowGraph, WorkflowNode};
@@ -27,6 +28,9 @@ pub enum SchedulerStop {
     Finished,
     /// Cancel/pause requested — checkpoint written, resume later.
     Paused,
+    /// P2.6-C: an approval-gated node is waiting — the run resumes via
+    /// run_graph after an explicit approve (rejected nodes get skipped).
+    AwaitingApproval { node_id: String },
     /// A step failed after retries; checkpoint written at the failure point.
     Failed { node_id: String, error: String },
 }
@@ -56,6 +60,7 @@ pub fn run_graph(
     run_id: &str,
     executor: &mut dyn StepExecutor,
     cancel: Option<&AtomicBoolRef>,
+    approvals: Option<&crate::approval::ApprovalStore>,
 ) -> SchedulerStop {
     let mut finished: HashSet<String> = HashSet::new();
     let mut skipped: HashSet<String> = HashSet::new();
@@ -119,6 +124,42 @@ pub fn run_graph(
         }
         // v1: sequential execution within ready set (B04 parallel lands later)
         for node in runnable {
+            // P2.6-C: approval-gated nodes pause the run (AwaitingApproval
+            // checkpoint) until an explicit decision; rejected = skip node.
+            if node.approval {
+                let decision = approvals
+                    .and_then(|a| a.decision_for(run_id, &node.node_id).ok())
+                    .flatten();
+                match decision {
+                    Some(ApprovalStatus::Approved) => {}
+                    Some(ApprovalStatus::Rejected) => {
+                        skipped.insert(node.node_id.clone());
+                        continue;
+                    }
+                    _ => {
+                        if let Some(a) = approvals {
+                            let _ = a.request(
+                                &format!("{run_id}:{}", node.node_id),
+                                run_id,
+                                &node.node_id,
+                                &node.action_ref,
+                            );
+                        }
+                        checkpoint(
+                            store,
+                            run_id,
+                            graph,
+                            RunStatus::AwaitingApproval,
+                            &finished,
+                            &skipped,
+                            &vars,
+                        );
+                        return SchedulerStop::AwaitingApproval {
+                            node_id: node.node_id.clone(),
+                        };
+                    }
+                }
+            }
             // B04 pause check between nodes: a cancel mid-batch pauses before
             // the next node, never mid-node
             if let Some(cancel) = cancel {

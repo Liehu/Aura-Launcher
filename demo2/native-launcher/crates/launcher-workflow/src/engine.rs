@@ -168,6 +168,7 @@ mod tests {
             action_ref: format!("cmd:{id}"),
             output_variables: vec![],
             condition: None,
+            approval: false,
         }
     }
 

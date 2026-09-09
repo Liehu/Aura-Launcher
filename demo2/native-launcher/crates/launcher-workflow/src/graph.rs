@@ -47,6 +47,10 @@ pub struct WorkflowNode {
     /// Node-level condition: node is skipped (branch not taken) when false.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub condition: Option<ConditionExpr>,
+    /// §19/§20 Human Approval: the node pauses the run for explicit user
+    /// approval before executing (P2.6-C). False = no approval needed.
+    #[serde(default)]
+    pub approval: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,6 +214,7 @@ mod tests {
             action_ref: format!("cmd:{id}"),
             output_variables: vec![],
             condition: None,
+            approval: false,
         }
     }
 
