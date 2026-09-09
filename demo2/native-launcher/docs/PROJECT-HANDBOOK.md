@@ -338,7 +338,9 @@ P27-A03       Intent/Entity 确定性规则解析               ✅ Batch 2
 P27-A05       结构化输出校验器（LLM 输出唯一通道         ✅ Batch 3
               fail-closed）—— 118 号
 P27-A06       Clarification Engine（确定性澄清决策）     ✅ Batch 4
-P27-000/002/003 + A01/A02/A04/B/C/D/E/F/G/H 线         ⏳ 未开始
+P27-A04/A02   Prompt Builder + 注入清洗 + 上下文预算     ✅ Batch 5
+              （E06-lite 第一二层，G05 批推进纵深）——120 号
+P27-000/002/003 + A01/B/C/D/E/F/G/H 线                 ⏳ 未开始
               ※ B05 + Workflow Integration 依赖
               P2.6 B 线（Durable Runtime）先行
 
