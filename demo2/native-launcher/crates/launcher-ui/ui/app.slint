@@ -14,7 +14,7 @@ import { FailureDetail } from "failure-detail.slint";
 import { DiagnosticDetails } from "diagnostic-details.slint";
 import { EditorRowItem, GraphEditorSurface } from "graph-editor.slint";
 
-export { EditorRowItem, GraphEditorSurface }
+export { EditorRowItem }
 
 // re-export so the Rust side can set the resolution-adaptive ui-scale
 export { Theme }
@@ -68,7 +68,8 @@ export component AppWindow inherits Window {
     // / Workflow are exclusive modes that REPLACE the main content.
     property <bool> in-action: root.panel-visible && root.actions.length > 0;
     property <bool> in-workflow: root.wf-visible;
-    property <bool> in-main: !root.in-action && !root.in-workflow;
+    property <bool> in-editor: root.editor-visible;
+    property <bool> in-main: !root.in-action && !root.in-workflow && !root.in-editor;
     property <bool> has-query: search.text != "";
     property <bool> show-results: root.in-main && root.has-query;
 
@@ -86,6 +87,7 @@ export component AppWindow inherits Window {
     property <length> mode-height:
         root.in-action ? panel.content-height
         : root.in-workflow ? wf.content-height
+        : root.in-editor ? ed.content-height
         : Theme.row-search
           + (root.has-query
               ? (root.results.length > 0
@@ -123,6 +125,18 @@ export component AppWindow inherits Window {
     in property <string> wf-title;
     in property <string> wf-status;
     in-out property <bool> wf-visible;
+    // P2.6-E03 Graph Editor surface (list VIEW over host EditorSurface rows)
+    in-out property <bool> editor-visible;
+    in property <[EditorRowItem]> editor-rows;
+    in property <string> editor-status;
+    in property <bool> editor-can-undo;
+    in property <bool> editor-can-redo;
+    callback editor-closed();
+    callback editor-add-node(string, string);
+    callback editor-remove-node(string);
+    callback editor-undo();
+    callback editor-redo();
+    callback editor-export();
     callback query-changed(string);
     callback execute(string);
     callback selection-changed(string);
@@ -152,7 +166,15 @@ export component AppWindow inherits Window {
         key-pressed(event) => {
             // fired when this scope itself holds focus (Action/Workflow
             // modes hide the search box; focus-keys() moved focus here)
-            if (root.wf-visible) {
+            if (root.editor-visible) {
+                // P2.6-E03: editor mode — Esc closes back to main; typing
+                // goes to the editor's own LineEdit (not captured here)
+                if (event.text == Key.Escape) {
+                    root.editor-visible = false;
+                    root.editor-closed();
+                }
+                accept
+            } else if (root.wf-visible) {
                 if (event.text == Key.Escape) {
                     root.wf-visible = false;
                     root.wf-diagnostics = false;
@@ -325,6 +347,27 @@ export component AppWindow inherits Window {
             root.execute-action(
                 root.results[root.selected-index].command-id,
                 action-id);
+        }
+    }
+
+    // P2.6-E03 Graph Editor surface: list VIEW over host-projected rows;
+    // all logic lives in the host EditorSurface (launcher-app)
+    ed := GraphEditorSurface {
+        y: parent.height - Theme.padding-window - root.status-height - self.height;
+        width: parent.width;
+        visible: root.editor-visible;
+        rows: root.editor-rows;
+        status-text: root.editor-status;
+        can-undo: root.editor-can-undo;
+        can-redo: root.editor-can-redo;
+        add-node(node-id, action-ref) => { root.editor-add-node(node-id, action-ref); }
+        remove-node(node-id) => { root.editor-remove-node(node-id); }
+        undo-requested() => { root.editor-undo(); }
+        redo-requested() => { root.editor-redo(); }
+        export-requested() => { root.editor-export(); }
+        close-requested() => {
+            root.editor-visible = false;
+            root.editor-closed();
         }
     }
 

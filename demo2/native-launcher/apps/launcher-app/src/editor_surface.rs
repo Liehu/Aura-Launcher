@@ -8,6 +8,9 @@
 
 #![allow(dead_code)]
 
+use std::sync::Mutex;
+
+use slint::ComponentHandle as _;
 use launcher_workflow::editor::GraphEditor;
 use launcher_workflow::graph::ConditionOp;
 
@@ -168,4 +171,142 @@ mod tests {
         let valid = launcher_workflow::graph::validate(&s.editor.graph).is_ok();
         assert!(!valid, "draft with unreachable node is detectable");
     }
+}
+
+// ---- E03–E05: Slint surface host binding --------------------------------
+
+/// The session-scoped editor instance. One editor at a time (v1); the draft
+/// survives closing the surface within the process lifetime.
+static EDITOR: std::sync::OnceLock<Mutex<Option<EditorSurface>>> = std::sync::OnceLock::new();
+
+fn editor_slot() -> &'static Mutex<Option<EditorSurface>> {
+    EDITOR.get_or_init(|| Mutex::new(None))
+}
+
+fn draft_path() -> std::path::PathBuf {
+    crate::data_dir().join("editor-draft.json")
+}
+
+/// Ensure the editor exists: import the last draft when present, else a
+/// fresh single-node graph.
+fn ensure_editor() {
+    let mut slot = editor_slot().lock().expect("editor lock");
+    if slot.is_some() {
+        return;
+    }
+    let graph = std::fs::read_to_string(draft_path())
+        .ok()
+        .and_then(|raw| launcher_workflow::editor::import_json(&raw).ok())
+        .unwrap_or_else(|| {
+            launcher_workflow::graph::WorkflowGraph::new("wf.edited", "Edited Workflow", "start")
+                .with_node(launcher_workflow::graph::WorkflowNode {
+                    node_id: "start".into(),
+                    action_ref: "cmd:open".into(),
+                    output_variables: vec![],
+                    condition: None,
+                    approval: false,
+                })
+        });
+    *slot = Some(EditorSurface::new(GraphEditor::new(graph)));
+}
+
+/// Push the current projection to the UI (rows/status/undo-redo flags).
+fn push(ui: &slint::Weak<launcher_ui::AppWindow>) {
+    let ui = ui.clone();
+    let slot = editor_slot().lock().expect("editor lock");
+    let Some(s) = slot.as_ref() else { return };
+    let rows: Vec<launcher_ui::EditorRowItem> = s
+        .rows
+        .iter()
+        .map(|r| launcher_ui::EditorRowItem {
+            node_id: r.node_id.clone().into(),
+            action_ref: r.action_ref.clone().into(),
+            condition: r.condition.clone().into(),
+        })
+        .collect();
+    let status = status_text(&s.editor.graph);
+    let (can_undo, can_redo) = (s.editor.can_undo(), s.editor.can_redo());
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui.upgrade() {
+            ui.set_editor_rows(slint::ModelRc::new(std::rc::Rc::new(
+                slint::VecModel::from(rows),
+            )));
+            ui.set_editor_status(status.into());
+            ui.set_editor_can_undo(can_undo);
+            ui.set_editor_can_redo(can_redo);
+        }
+    });
+}
+
+/// E03 entry: open the editor mode (importing the draft when one exists).
+pub fn open_editor(ui_weak: slint::Weak<launcher_ui::AppWindow>) {
+    ensure_editor();
+    let ui2 = ui_weak.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui2.upgrade() {
+            let _ = ui.show();
+            ui.set_editor_visible(true);
+            ui.invoke_focus_keys();
+        }
+    });
+    push(&ui_weak);
+}
+
+/// E04: host-routed surface callbacks — every mutation re-projects.
+pub fn add_node(node_id: &str, action_ref: &str, ui_weak: slint::Weak<launcher_ui::AppWindow>) {
+    if let Ok(mut slot) = editor_slot().lock() {
+        if let Some(s) = slot.as_mut() {
+            let _ = s.add_node(node_id, action_ref);
+        }
+    }
+    push(&ui_weak);
+}
+
+pub fn remove_node(node_id: &str, ui_weak: slint::Weak<launcher_ui::AppWindow>) {
+    if let Ok(mut slot) = editor_slot().lock() {
+        if let Some(s) = slot.as_mut() {
+            let _ = s.remove_node(node_id);
+        }
+    }
+    push(&ui_weak);
+}
+
+pub fn undo(ui_weak: slint::Weak<launcher_ui::AppWindow>) {
+    if let Ok(mut slot) = editor_slot().lock() {
+        if let Some(s) = slot.as_mut() {
+            s.undo();
+        }
+    }
+    push(&ui_weak);
+}
+
+pub fn redo(ui_weak: slint::Weak<launcher_ui::AppWindow>) {
+    if let Ok(mut slot) = editor_slot().lock() {
+        if let Some(s) = slot.as_mut() {
+            s.redo();
+        }
+    }
+    push(&ui_weak);
+}
+
+/// E05/E06: validate + persist the draft (same JSON contract the durable
+/// definition store consumes); invalid graphs refuse to save (validate
+/// runs before save, §10).
+pub fn export_draft(ui_weak: slint::Weak<launcher_ui::AppWindow>) {
+    let result: Result<String, String> = (|| {
+        let slot = editor_slot().lock().expect("editor lock");
+        let s = slot.as_ref().ok_or("editor not open")?;
+        let json = launcher_workflow::editor::export_json(&s.editor.graph)?;
+        std::fs::write(draft_path(), json).map_err(|e| e.to_string())?;
+        Ok(format!("saved to {}", draft_path().display()))
+    })();
+    let status = match result {
+        Ok(msg) => msg,
+        Err(e) => format!("INVALID: {e}"),
+    };
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            ui.set_editor_status(status.into());
+        }
+    });
 }

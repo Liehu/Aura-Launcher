@@ -181,6 +181,8 @@ fn build_core(
     core.register(Box::new(SettingsProvider::new(&config_file)));
     // P2.7-C03: agent trigger commands (query prefix "agent ")
     core.register(Box::new(AgentCommandProvider));
+    // P2.6-E03: workflow editor entry point
+    core.register(Box::new(EditorCommandProvider::new()));
 
     // the indexer connection doubles as the bounded history sink (WAL)
     core.set_history(indexer);
@@ -852,6 +854,56 @@ impl launcher_core::Provider for SettingsProvider {
     }
 }
 
+/// P2.6-E03 entry: a searchable "Open Workflow Editor" command (same
+/// pattern as the settings entry point) routed host-side into the editor
+/// surface — the engine never sees the editor command as an Open target.
+struct EditorCommandProvider {
+    cmd: Command,
+}
+
+impl EditorCommandProvider {
+    fn new() -> Self {
+        Self {
+            cmd: Command {
+                id: "open-editor".into(),
+                title: "Open Workflow Editor".into(),
+                subtitle: Some("Edit the workflow draft graph (list surface, undo/redo, export)".into()),
+                icon: None,
+                provider_id: "editor".into(),
+                score: 0.0,
+                keywords: vec!["editor".into(), "workflow".into()],
+                category: launcher_domain::Category::Command,
+                actions: vec![launcher_domain::Action {
+                    kind: launcher_domain::ActionKind::Execute,
+                    payload: None,
+                    id: Some("open".into()),
+                    title: Some("Open editor".into()),
+                    disabled_reason: None,
+                    shortcut: None,
+                    confirmation_required: false,
+                }],
+                target: None,
+            },
+        }
+    }
+}
+
+impl launcher_core::Provider for EditorCommandProvider {
+    fn id(&self) -> &str {
+        "editor"
+    }
+    fn query(&mut self, q: &launcher_domain::QueryContext) -> Vec<Command> {
+        let hit = q.normalized.contains("editor")
+            || q.normalized.contains("workflow")
+            || q.normalized.is_empty();
+        if hit {
+            vec![self.cmd.clone()]
+        } else {
+            vec![]
+        }
+    }
+}
+
 /// P2.7-C03 trigger source: the `agent ` query prefix surfaces an "Ask AI
 /// Agent" command whose target is the goal text. Execution is routed
 /// host-side (provider_id == "agent", same namespace-routing pattern as
@@ -1183,7 +1235,10 @@ fn execute_action_by_id(
             .iter()
             .find(|c| c.id == command_id)
             .filter(|c| {
-                c.provider_id == "workflows" || c.provider_id == "settings" || c.provider_id == "agent"
+                c.provider_id == "workflows"
+                    || c.provider_id == "settings"
+                    || c.provider_id == "agent"
+                    || c.provider_id == "editor"
             })
             .map(|c| (c.provider_id.clone(), c.target.clone()))
             .unwrap_or_default()
@@ -1191,6 +1246,11 @@ fn execute_action_by_id(
     match (routed_provider.as_str(), routed_target) {
         ("workflows", Some(file)) => {
             run_installed_workflow(state, ui_weak, file);
+            return;
+        }
+        ("editor", _) => {
+            // P2.6-E03: open the graph editor mode on the popup surface
+            editor_surface::open_editor(ui_weak);
             return;
         }
         ("agent", Some(goal)) => {
@@ -2010,6 +2070,29 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         });
+        // P2.6-E03/E04/E05: editor surface callbacks → host EditorSurface
+        {
+            let cb = ui_weak.clone();
+            ui.on_editor_add_node(move |node_id, action_ref| {
+                editor_surface::add_node(&node_id, &action_ref, cb.clone());
+            });
+            let cb = ui_weak.clone();
+            ui.on_editor_remove_node(move |node_id| {
+                editor_surface::remove_node(&node_id, cb.clone());
+            });
+            let cb = ui_weak.clone();
+            ui.on_editor_undo(move || editor_surface::undo(cb.clone()));
+            let cb = ui_weak.clone();
+            ui.on_editor_redo(move || editor_surface::redo(cb.clone()));
+            let cb = ui_weak.clone();
+            ui.on_editor_export(move || editor_surface::export_draft(cb.clone()));
+            let cb = ui_weak.clone();
+            ui.on_editor_closed(move || {
+                if let Some(ui) = cb.upgrade() {
+                    ui.invoke_focus_input();
+                }
+            });
+        }
         // Esc in the panel = Cancel: a pending confirmation is never
         // persisted (UI-CONTRACT §12 / INV-048)
         ui.on_panel_closed({

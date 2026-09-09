@@ -1,13 +1,13 @@
-//! E03/E04 binding proof: the GraphEditorSurface instantiates, accepts the
-//! host-projected row model, exposes row data to Slint, and routes the
-//! undo/redo callbacks back to handlers the host installs.
+//! E03/E04 binding proof: the GraphEditorSurface (now embedded as an
+//! AppWindow mode) accepts the host-projected row model, exposes row data
+//! to Slint, and the host-facing editor properties round-trip.
 
-use launcher_ui::{EditorRowItem, GraphEditorSurface};
-use slint::Model;
+use launcher_ui::EditorRowItem;
+use slint::{ComponentHandle as _, Model};
 
 #[test]
 fn editor_surface_binds_rows() {
-    let editor = GraphEditorSurface::new().unwrap();
+    let ui = launcher_ui::AppWindow::new().unwrap();
     // host projection: rows from EditorSurface.rows (EditorRow DTOs)
     let rows = vec![
         EditorRowItem {
@@ -22,10 +22,19 @@ fn editor_surface_binds_rows() {
         },
     ];
     let model = std::rc::Rc::new(slint::VecModel::from(rows.clone()));
-    editor.set_rows(slint::ModelRc::from(model.clone()));
+    ui.set_editor_rows(slint::ModelRc::from(model.clone()));
 
-    assert_eq!(editor.get_rows().row_count(), 2, "row model bound");
-    let row = editor.get_rows().row_data(1).expect("row 1 exists");
+    assert_eq!(ui.get_editor_rows().row_count(), 2, "row model bound");
+    let row = ui.get_editor_rows().row_data(1).expect("row 1 exists");
     assert_eq!(row.node_id, "b");
     assert_eq!(row.condition, "count > 3");
+
+    // mode flag + undo/redo flags round-trip through the AppWindow
+    ui.set_editor_visible(true);
+    assert!(ui.get_editor_visible());
+    ui.set_editor_can_undo(true);
+    ui.set_editor_can_redo(false);
+    assert!(ui.get_editor_can_undo());
+    assert!(!ui.get_editor_can_redo());
+    ui.hide().unwrap();
 }

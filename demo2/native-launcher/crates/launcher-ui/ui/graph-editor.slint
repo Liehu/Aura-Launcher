@@ -69,7 +69,9 @@ component EditorLine inherits Rectangle {
 
 // The editor surface: rows + command callbacks routed to the host
 // (EditorSurface methods) — the surface itself holds no logic.
-export component GraphEditorSurface inherits Window {
+// Embedded in the AppWindow as a mode (like the Workflow Runtime surface),
+// NOT a second window (same-window mode switch, review 18 §17).
+export component GraphEditorSurface inherits Rectangle {
     in property <[EditorRowItem]> rows;
     in property <string> status-text;
     in property <bool> can-undo;
@@ -79,8 +81,14 @@ export component GraphEditorSurface inherits Window {
     callback undo-requested();
     callback redo-requested();
     callback export-requested();
+    callback close-requested();
 
     background: Theme.bg-canvas;
+    // content-driven height: toolbar + rows + status (Spec v0.2 §21)
+    out property <length> content-height: Theme.space-2 * 2
+        + 32px + Theme.space-1
+        + rows.length * 34px + (rows.length > 0 ? Theme.space-1 : 0px)
+        + 16px;
     VerticalLayout {
         padding: 8px;
         spacing: 6px;
@@ -91,10 +99,12 @@ export component GraphEditorSurface inherits Window {
             Button { text: "Undo"; enabled: root.can-undo; clicked => { root.undo-requested(); } }
             Button { text: "Redo"; enabled: root.can-redo; clicked => { root.redo-requested(); } }
             Button { text: "Export"; clicked => { root.export-requested(); } }
+            Button { text: "Close"; clicked => { root.close-requested(); } }
         }
         for line-item[root-index] in root.rows: EditorLine {
             item: line-item;
             activated => { }
+            remove-clicked => { root.remove-node(line-item.node_id); }
         }
         Text {
             text: root.status-text;
