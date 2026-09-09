@@ -77,9 +77,18 @@ pub fn run(ui_weak: slint::Weak<AppWindow>, visible: Arc<AtomicBool>, report: Pa
         });
         pass &= count > 0;
 
-        // -- ↓ moves selection (contract §99) through the REAL key pipeline
+        // -- ↓ moves selection (contract §99) through the REAL key pipeline.
+        // The key event is processed asynchronously on the event loop — poll
+        // (bounded) for the selection to land instead of a single read.
         press(&ui_weak, key_text(Key::DownArrow));
-        let after_down = read_ui(&ui_weak, |ui| ui.get_selected_index()).unwrap_or(-1);
+        let mut after_down = read_ui(&ui_weak, |ui| ui.get_selected_index()).unwrap_or(-1);
+        for _ in 0..20 {
+            if after_down == 1 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+            after_down = read_ui(&ui_weak, |ui| ui.get_selected_index()).unwrap_or(-1);
+        }
         steps.push(Step {
             name: "arrow_down_moves_selection",
             ok: count >= 2 && after_down == 1,
