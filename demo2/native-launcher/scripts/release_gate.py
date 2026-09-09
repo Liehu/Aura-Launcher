@@ -477,6 +477,24 @@ def main():
     steps.append(s := Step("G16", "P2.9 system integration conformance"))
     timed(s, g_p29)
 
+    # ---- Gate 17: P2.6 Workflow 2.0 conformance (P2.6-F/G).
+    def g_p26(step):
+        suites = [
+            ["cargo", "test", "-p", "launcher-workflow"],
+            ["cargo", "test", "-p", "launcher-app", "--bin", "launcher-app"],
+        ]
+        failures = []
+        for cmd in suites:
+            r = run(cmd, timeout=1200)
+            if r.returncode != 0:
+                failures.append(" ".join(cmd[2:]))
+        if failures:
+            return "FAIL", "failed suites: " + "; ".join(failures)
+        return "PASS", f"{len(suites)} P2.6 conformance suites green (graph/engine/durable/approval/triggers/editor)"
+
+    steps.append(s := Step("G17", "P2.6 workflow conformance"))
+    timed(s, g_p26)
+
     # ---- Gate 12: Evidence / Manifest / Release Artifact Closure (P2.3-H).
     # Package the dist zip, seal evidence (SHA-256 of the release artifacts),
     # then freeze the manifest with the evidence inline. The manifest IS the

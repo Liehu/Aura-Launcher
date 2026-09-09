@@ -68,6 +68,7 @@
 | `125-p29-batch6-closure.md` | **P2.9 收口**：Race/Security/Fault 全矩阵 + G16 入 gate（G01~G16 PASS）；Windows Adapter 后置 | ✅ 784 tests |
 | `130-p29-b6-p26-e02.md` | **P2.9 Batch 6 落档 + P2.6 E02**：Editor 宿主投影层（EditorSurface/EditorRow，ViewModel 模式，E05 验证面前身） | ✅ 790 tests |
 | `131-p26-batch10-editor-surface.md` | **P2.6 Batch 10**：E03 GraphEditorSurface（Slint 列表式编辑器 VIEW + 回调） | ✅ 790 tests |
+| `132-p26-batch11-closure.md` | **P2.6 收口**：E04/E05 接线证明 + G17 workflow conformance 入 gate（G01~G17 PASS）＝ P2.6 完成 | ✅ 791 tests |
 | `106-p26-batch2-engine.md` | **P2.6 Batch 2**：执行语义（A03 WaitAll Join/skip 穿透 + A04 条件引擎 + A05 VariableStore） | ✅ 715 tests |
 | `107-p26-batch3-durable-store.md` | **P2.6 Batch 3**：B01 Durable Run Store（SQLite checkpoint 持久化/按状态恢复扫描/损坏重建）+ A06 契约 kit | ✅ 718 tests |
 | `108-p26-batch4-scheduler.md` | **P2.6 Batch 4**：Durable Scheduler（B02 每节点 checkpoint + B03 执行循环 + B05 失败策略 + B06 暂停/恢复不重执行） | ✅ 722 tests |

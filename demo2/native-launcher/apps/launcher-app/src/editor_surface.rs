@@ -99,6 +99,15 @@ impl EditorSurface {
     }
 }
 
+/// E05 验证面: validate the draft graph and produce a human-readable
+/// status line for the editor surface (empty = valid).
+pub fn status_text(graph: &launcher_workflow::graph::WorkflowGraph) -> String {
+    match launcher_workflow::graph::validate(graph) {
+        Ok(()) => String::new(),
+        Err(e) => format!("INVALID: {e}"),
+    }
+}
+
 fn debug_op(op: ConditionOp) -> &'static str {
     match op {
         ConditionOp::Eq => "==",
