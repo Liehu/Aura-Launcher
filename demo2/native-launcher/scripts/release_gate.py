@@ -442,6 +442,23 @@ def main():
     steps.append(s := Step("G14", "P2.5 search intelligence conformance"))
     timed(s, g_p25)
 
+    # ---- Gate 15: P2.8 Ecosystem conformance (P2.8-J).
+    def g_p28(step):
+        suites = [
+            ["cargo", "test", "-p", "launcher-plugin-cli"],
+        ]
+        failures = []
+        for cmd in suites:
+            r = run(cmd, timeout=1200)
+            if r.returncode != 0:
+                failures.append(" ".join(cmd[2:]))
+        if failures:
+            return "FAIL", "failed suites: " + "; ".join(failures)
+        return "PASS", f"{len(suites)} P2.8 conformance suites green (ecosystem cli incl. e2e)"
+
+    steps.append(s := Step("G15", "P2.8 ecosystem conformance"))
+    timed(s, g_p28)
+
     # ---- Gate 12: Evidence / Manifest / Release Artifact Closure (P2.3-H).
     # Package the dist zip, seal evidence (SHA-256 of the release artifacts),
     # then freeze the manifest with the evidence inline. The manifest IS the

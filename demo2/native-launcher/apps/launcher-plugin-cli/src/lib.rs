@@ -19,6 +19,7 @@
 //! PluginHandle::spawn` — Job Object isolation, bounded IO, protocol
 //! handshake); dev tooling never bypasses host isolation (P2.4-D05).
 
+pub mod audit;
 pub mod foundation;
 pub mod repository;
 pub mod resolver;
