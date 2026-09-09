@@ -29,6 +29,7 @@ pub mod llm;
 pub mod planner;
 pub mod prompt;
 pub mod provider_caps;
+pub mod telemetry;
 pub mod tool_catalog;
 
 pub use llm::{LlmError, LlmProvider, LlmRequest, LlmResponse, MockLlmProvider};

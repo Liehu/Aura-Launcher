@@ -1254,8 +1254,21 @@ fn execute_action_by_id(
             return;
         }
         ("agent", Some(goal)) => {
-            // P2.7-C03: the goal (query text after the prefix) drives the
-            // Agent Loop; the surface + cancel are owned by the service
+            // P2.7-C03/F05: `agent retry` re-runs the most recent goal;
+            // any other goal is remembered for a later retry
+            let goal = if goal.trim() == "retry" {
+                let last = agent_service::last_goal();
+                if last.is_empty() {
+                    set_status(ui_weak, "⚠ No previous agent goal to retry".into());
+                    return;
+                }
+                last
+            } else {
+                agent_service::remember_goal(&goal);
+                goal
+            };
+            // the goal (query text after the prefix) drives the Agent Loop;
+            // the surface + cancel are owned by the service
             agent_service::start_agent_run(state, ui_weak, goal);
             return;
         }

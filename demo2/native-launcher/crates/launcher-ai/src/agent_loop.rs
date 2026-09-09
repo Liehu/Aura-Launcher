@@ -44,6 +44,20 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// §37 run-terminal event + §38 total latency, recorded at every exit path.
+impl crate::telemetry::Telemetry {
+    fn finish(&mut self, started_ms: i64, stop: LoopStop) {
+        use crate::telemetry::AgentEvent::*;
+        let (event, detail) = match &stop {
+            LoopStop::Completed => (RunSucceeded, String::new()),
+            LoopStop::Failed { step_id, .. } => (RunFailed, step_id.clone()),
+            LoopStop::Cancelled => (RunCancelled, String::new()),
+        };
+        self.log.record(now_ms(), event, &detail);
+        self.metrics.agent_run_latency_ms = (now_ms() - started_ms).max(0) as u64;
+    }
+}
+
 /// Result of one full agent run.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LoopStop {
@@ -67,10 +81,16 @@ pub fn run_agent(
     policy: &ClarificationPolicy,
     context_budget: usize,
     approval: &mut dyn ApprovalSink,
+    telemetry: &mut crate::telemetry::Telemetry,
 ) -> LoopStop {
+    let t0 = now_ms();
+    telemetry.event(t0, crate::telemetry::AgentEvent::SessionCreated, &session.session_id);
     let observe = session.transition(AgentRunStatus::Observing, true);
     if let Err(TransitionError::StepBudgetExhausted) = observe {
+        telemetry.event(now_ms(), crate::telemetry::AgentEvent::BudgetExceeded, "(budget)");
+        telemetry.metrics.budget_exceeded_count += 1;
         let _ = session.transition(AgentRunStatus::BudgetExhausted, false);
+        telemetry.finish(t0, LoopStop::Failed { step_id: "(budget)".into(), error: "step budget exhausted".into() });
         return LoopStop::Failed { step_id: "(budget)".into(), error: "step budget exhausted".into() };
     }
     let _ = session.transition(AgentRunStatus::Planning, false);
@@ -78,17 +98,40 @@ pub fn run_agent(
     loop {
         if cancel.load(Ordering::SeqCst) {
             let _ = session.transition(AgentRunStatus::Cancelled, false);
+            telemetry.finish(t0, LoopStop::Cancelled);
             return LoopStop::Cancelled;
         }
-        // PLAN: the pipeline assembles the prompt, calls the LLM, validates
-        match run_pipeline(input, context, catalog, llm, policy, context_budget) {
+        // PLAN: the pipeline assembles the prompt, calls the LLM, validates.
+        // The LLM call is timed through a wrapper closure (§38 llm_latency).
+        let plan_started = std::time::Instant::now();
+        let outcome = {
+            let cell = std::cell::RefCell::new(&mut *telemetry);
+            let llm_timed = |prompt: String| -> Result<String, String> {
+                let started = std::time::Instant::now();
+                let r = llm(prompt);
+                let mut t = cell.borrow_mut();
+                t.metrics.llm_latency_ms += started.elapsed().as_millis() as u64;
+                if r.is_err() {
+                    t.metrics.model_error_count += 1;
+                }
+                drop(t);
+                r
+            };
+            run_pipeline(input, context, catalog, &llm_timed, policy, context_budget)
+        };
+        match outcome {
             Ok(PipelineOutcome::Clarify { question, .. }) => {
+                telemetry.metrics.planning_latency_ms += plan_started.elapsed().as_millis() as u64;
                 // v1: clarification surfaced to the host as a failed step;
                 // the interactive clarify loop (§18) is a D-line item.
                 let _ = session.transition(AgentRunStatus::Failed, false);
-                return LoopStop::Failed { step_id: "(clarify)".into(), error: question };
+                let stop = LoopStop::Failed { step_id: "(clarify)".into(), error: question };
+                telemetry.finish(t0, stop.clone());
+                return stop;
             }
             Ok(PipelineOutcome::Proposal { mut proposal, .. }) => {
+                telemetry.metrics.planning_latency_ms += plan_started.elapsed().as_millis() as u64;
+                telemetry.event(now_ms(), crate::telemetry::AgentEvent::PlanGenerated, &proposal.plan.iter().map(|s| s.action_ref.clone()).collect::<Vec<_>>().join(","));
                 // §23 request_approval_if_required: a plan with approval
                 // steps blocks on the host BEFORE any execution. The gate
                 // enforces expiry + single use (§21 run/event-scoped);
@@ -99,24 +142,36 @@ pub fn run_agent(
                         gate.request(&session.session_id, input, &proposal.plan, now_ms())
                     else {
                         let _ = session.transition(AgentRunStatus::Cancelled, false);
+                        telemetry.finish(t0, LoopStop::Cancelled);
                         return LoopStop::Cancelled;
                     };
-                    match approval.request_approval(&req) {
-                        Some(decision) => match gate.decide(&req.request_id, decision.decision, now_ms()) {
-                            Ok(steps) if steps.is_empty() => {
-                                // Reject: never executes
-                                let _ = session.transition(AgentRunStatus::Cancelled, false);
-                                return LoopStop::Cancelled;
+                    telemetry.event(now_ms(), crate::telemetry::AgentEvent::ApprovalRequested, &req.request_id);
+                    let approval_started = std::time::Instant::now();
+                    let decision = approval.request_approval(&req);
+                    telemetry.metrics.approval_wait_ms += approval_started.elapsed().as_millis() as u64;
+                    match decision {
+                        Some(decision) => {
+                            telemetry.event(now_ms(), crate::telemetry::AgentEvent::ApprovalReceived, &req.request_id);
+                            match gate.decide(&req.request_id, decision.decision, now_ms()) {
+                                Ok(steps) if steps.is_empty() => {
+                                    // Reject: never executes
+                                    telemetry.event(now_ms(), crate::telemetry::AgentEvent::PlanRejected, &req.request_id);
+                                    let _ = session.transition(AgentRunStatus::Cancelled, false);
+                                    telemetry.finish(t0, LoopStop::Cancelled);
+                                    return LoopStop::Cancelled;
+                                }
+                                Ok(steps) => proposal.plan = steps,
+                                Err(_) => {
+                                    let _ = session.transition(AgentRunStatus::Cancelled, false);
+                                    telemetry.finish(t0, LoopStop::Cancelled);
+                                    return LoopStop::Cancelled;
+                                }
                             }
-                            Ok(steps) => proposal.plan = steps,
-                            Err(_) => {
-                                let _ = session.transition(AgentRunStatus::Cancelled, false);
-                                return LoopStop::Cancelled;
-                            }
-                        },
+                        }
                         None => {
                             let _ = gate.cancel(&req.request_id);
                             let _ = session.transition(AgentRunStatus::Cancelled, false);
+                            telemetry.finish(t0, LoopStop::Cancelled);
                             return LoopStop::Cancelled;
                         }
                     }
@@ -132,11 +187,17 @@ pub fn run_agent(
                     for step in &proposal.plan {
                         if cancel.load(Ordering::SeqCst) {
                             let _ = session.transition(AgentRunStatus::Cancelled, false);
+                            telemetry.finish(t0, LoopStop::Cancelled);
                             return LoopStop::Cancelled;
                         }
+                        telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepStarted, &step.action_ref);
+                        telemetry.metrics.tool_selection_count += 1;
                         match exec.execute(&step.action_ref, &step.input) {
-                            Ok(_) => {}
+                            Ok(_) => {
+                                telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepCompleted, &step.step_id);
+                            }
                             Err(e) => {
+                                telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepFailed, &step.step_id);
                                 failure = Some((step.step_id.clone(), e));
                                 break;
                             }
@@ -145,16 +206,21 @@ pub fn run_agent(
                     match failure {
                         None => {
                             let _ = session.transition(AgentRunStatus::Completed, false);
+                            telemetry.finish(t0, LoopStop::Completed);
                             return LoopStop::Completed;
                         }
                         Some((step_id, e)) => {
                             // §25: exactly one re-plan attempt (v1 policy)
                             if replanned || attempt > 0 {
                                 let _ = session.transition(AgentRunStatus::Failed, false);
-                                return LoopStop::Failed { step_id, error: e };
+                                let stop = LoopStop::Failed { step_id, error: e };
+                                telemetry.finish(t0, stop.clone());
+                                return stop;
                             }
                             replanned = true;
                             attempt += 1;
+                            telemetry.metrics.replan_count += 1;
+                            telemetry.event(now_ms(), crate::telemetry::AgentEvent::Replanned, &step_id);
                             let _ = session.transition(AgentRunStatus::Replanning, false);
                             let _ = session.transition(AgentRunStatus::Planning, true);
                             let _ = session.transition(AgentRunStatus::Executing, false);
@@ -163,8 +229,11 @@ pub fn run_agent(
                 }
             }
             Err(e) => {
+                telemetry.metrics.model_error_count += 1;
                 let _ = session.transition(AgentRunStatus::Failed, false);
-                return LoopStop::Failed { step_id: "(plan)".into(), error: e };
+                let stop = LoopStop::Failed { step_id: "(plan)".into(), error: e };
+                telemetry.finish(t0, stop.clone());
+                return stop;
             }
         }
     }
@@ -214,10 +283,12 @@ mod tests {
         let mut session = AgentSession::new("s", 10);
         let mut host = Host { calls: vec![], fail_first: false };
         let cancel = AtomicBool::new(false);
+        let mut telemetry = crate::telemetry::Telemetry::default();
         let stop = run_agent(
             &mut session, "do the thing", "", "catalog",
             &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256,
             &mut NoApprovalSink,
+            &mut telemetry,
         );
         assert_eq!(stop, LoopStop::Completed);
         assert_eq!(host.calls, vec!["command:app:thing", "command:app:after"]);
@@ -230,9 +301,10 @@ mod tests {
         let mut session = AgentSession::new("s", 10);
         let mut host = Host { calls: vec![], fail_first: true };
         let cancel = AtomicBool::new(false);
+        let mut telemetry = crate::telemetry::Telemetry::default();
         // Host fails only on the very first execute of the session's first
         // turn; the replan (second turn) succeeds.
-        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256, &mut NoApprovalSink);
+        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256, &mut NoApprovalSink, &mut telemetry);
         let _ = stop;
         assert!(matches!(
             session.state(),
@@ -247,7 +319,8 @@ mod tests {
         let cancel = AtomicBool::new(false);
         cancel.store(true, Ordering::SeqCst);
         let mut host = Host { calls: vec![], fail_first: false };
-        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256, &mut NoApprovalSink);
+        let mut telemetry = crate::telemetry::Telemetry::default();
+        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256, &mut NoApprovalSink, &mut telemetry);
         assert_eq!(stop, LoopStop::Cancelled);
         assert_eq!(session.state(), AgentRunStatus::Cancelled);
     }
@@ -270,9 +343,10 @@ mod tests {
         let mut session = AgentSession::new("s", 10);
         let mut host = Host { calls: vec![], fail_first: false };
         let cancel = AtomicBool::new(false);
+        let mut telemetry = crate::telemetry::Telemetry::default();
         let stop = run_agent(
             &mut session, "risky", "", "cat", &llm_risky, &mut host, &cancel,
-            &ClarificationPolicy::default(), 256, &mut NoApprovalSink,
+            &ClarificationPolicy::default(), 256, &mut NoApprovalSink, &mut telemetry,
         );
         assert_eq!(stop, LoopStop::Cancelled);
         assert!(host.calls.is_empty(), "no step may execute without approval");
@@ -308,9 +382,10 @@ mod tests {
         let mut session = AgentSession::new("s", 10);
         let mut host = Host { calls: vec![], fail_first: false };
         let cancel = AtomicBool::new(false);
+        let mut telemetry = crate::telemetry::Telemetry::default();
         let stop = run_agent(
             &mut session, "risky", "", "cat", &llm_risky, &mut host, &cancel,
-            &ClarificationPolicy::default(), 256, &mut ApprovingSink,
+            &ClarificationPolicy::default(), 256, &mut ApprovingSink, &mut telemetry,
         );
         assert_eq!(stop, LoopStop::Completed);
         assert_eq!(host.calls, vec!["shell:run_script"]);
@@ -319,7 +394,7 @@ mod tests {
         let mut host = Host { calls: vec![], fail_first: false };
         let stop = run_agent(
             &mut session, "risky", "", "cat", &llm_risky, &mut host, &cancel,
-            &ClarificationPolicy::default(), 256, &mut RejectingSink,
+            &ClarificationPolicy::default(), 256, &mut RejectingSink, &mut telemetry,
         );
         assert_eq!(stop, LoopStop::Cancelled);
         assert!(host.calls.is_empty());

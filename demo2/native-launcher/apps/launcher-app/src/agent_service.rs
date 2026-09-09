@@ -145,9 +145,11 @@ impl ApprovalSink for UiApprovalSink {
 
 /// Host-side step executor: resolves `action_ref` (=`provider|command|action`,
 /// the ref format published in the catalog projection) into an ActionProposal
-/// and runs it through the frozen chain via `CoreAgentHost`.
+/// and runs it through the frozen chain via `CoreAgentHost`. F04: pushes the
+/// executing step to the runtime surface status line.
 struct CoreTurnExecutor {
     state: Arc<Mutex<AppState>>,
+    ui: slint::Weak<launcher_ui::AppWindow>,
 }
 
 impl TurnExecutor for CoreTurnExecutor {
@@ -160,6 +162,15 @@ impl TurnExecutor for CoreTurnExecutor {
         let [provider_id, command_id, action_id] = parts.as_slice() else {
             return Err(format!("malformed action_ref: {action_ref}"));
         };
+        {
+            let ui = self.ui.clone();
+            let progress = format!("executing {action_ref}");
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui.upgrade() {
+                    ui.set_wf_status(progress.into());
+                }
+            });
+        }
         let proposal = launcher_workflow::proposal::ActionProposal {
             provider_id: (*provider_id).to_string(),
             command_id: (*command_id).to_string(),
@@ -315,7 +326,8 @@ pub fn start_agent_run(
                 .expect("memory lock")
                 .push("global", "goal", &goal2, now_ms());
             let mut session = AgentSession::new(&run_id2, MAX_TURNS);
-            let mut exec = CoreTurnExecutor { state: state2.clone() };
+            let mut exec = CoreTurnExecutor { state: state2.clone(), ui: ui_weak2.clone() };
+            let mut telemetry = launcher_ai::telemetry::Telemetry::default();
             let llm = |prompt: String| -> Result<String, String> {
                 provider
                     .generate(&launcher_ai::llm::LlmRequest {
@@ -341,6 +353,7 @@ pub fn start_agent_run(
                 &ClarificationPolicy::default(),
                 CONTEXT_BUDGET,
                 &mut sink,
+                &mut telemetry,
             );
             if let Some(store) = &store {
                 let _ = store.save(&AgentSessionRecord {
@@ -360,6 +373,22 @@ pub fn start_agent_run(
                 }
             };
             tracing::info!(run = %run_id2, stop = ?stop, turns = session.turns, "agent.finished");
+            // §37/§38 observability: dump the event ring + metrics to the log
+            for r in telemetry.log.records() {
+                tracing::info!(at = r.at_ms, event = r.event.name(), detail = %r.detail, "agent.event");
+            }
+            let m = &telemetry.metrics;
+            tracing::info!(
+                llm_ms = m.llm_latency_ms,
+                plan_ms = m.planning_latency_ms,
+                approval_wait_ms = m.approval_wait_ms,
+                run_ms = m.agent_run_latency_ms,
+                steps = m.tool_selection_count,
+                replans = m.replan_count,
+                model_errors = m.model_error_count,
+                "agent.metrics"
+            );
+            remember_goal(&goal2);
             // E02: record the run outcome in bounded run memory
             runs_slot().lock().expect("run memory lock").record(RunRecord {
                 run_id: run_id2.clone(),
@@ -447,4 +476,24 @@ static RUNS: std::sync::OnceLock<Mutex<RunMemory>> = std::sync::OnceLock::new();
 
 fn runs_slot() -> &'static Mutex<RunMemory> {
     RUNS.get_or_init(|| Mutex::new(RunMemory::new()))
+}
+
+/// F05: the last goal, for `agent retry`.
+static LAST_GOAL: std::sync::OnceLock<Mutex<Option<String>>> = std::sync::OnceLock::new();
+
+/// F05: remember a goal for a later `agent retry`.
+pub fn remember_goal(goal: &str) {
+    if let Ok(mut slot) = LAST_GOAL.get_or_init(|| Mutex::new(None)).lock() {
+        *slot = Some(goal.to_string());
+    }
+}
+
+/// The most recent goal (empty string when none yet).
+pub fn last_goal() -> String {
+    LAST_GOAL
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|s| s.clone())
+        .unwrap_or_default()
 }
