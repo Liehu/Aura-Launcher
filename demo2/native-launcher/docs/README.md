@@ -57,6 +57,7 @@
 | `104-p29-batch1-contract.md` | **P2.9 Batch 1**：系统集成契约基座（Capability/Risk/Target/Command/Resolver 骨架/Mock，纯类型零 OS） | ✅ 708 tests |
 | `105-p29-batch2-file-adapter.md` | **P2.9 Batch 2**：File Adapter（SystemCommand → 既有 host-owned Action 映射，fail-closed） | ✅ 711 tests |
 | `106-p26-batch2-engine.md` | **P2.6 Batch 2**：执行语义（A03 WaitAll Join/skip 穿透 + A04 条件引擎 + A05 VariableStore） | ✅ 715 tests |
+| `107-p26-batch3-durable-store.md` | **P2.6 Batch 3**：B01 Durable Run Store（SQLite checkpoint 持久化/按状态恢复扫描/损坏重建）+ A06 契约 kit | ✅ 718 tests |
 
 ## 权威文档（不在本目录）
 

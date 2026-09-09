@@ -2958,9 +2958,11 @@ version = "1.0.0"
 dependencies = [
  "launcher-action",
  "launcher-domain",
+ "rusqlite",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

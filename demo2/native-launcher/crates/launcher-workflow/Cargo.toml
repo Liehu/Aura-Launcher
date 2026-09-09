@@ -5,10 +5,14 @@ edition.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
+tracing = { workspace = true }
 launcher-domain = { workspace = true }
 launcher-action = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dependencies.rusqlite]
+workspace = true
 
 [dev-dependencies]
 launcher-action = { workspace = true }
