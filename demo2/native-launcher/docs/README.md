@@ -60,7 +60,10 @@
 | `133-p27-batch7-risk-classifier.md` | **P2.7 Batch 7**：B06 Risk Classifier（L0-L4 确定性分类，未知 fail-closed） | ✅ 793 tests |
 | `134-p27-batch8-pipeline.md` | **P2.7 Batch 8**：Agent Pipeline 串联（Intent→澄清→Prompt→LLM→校验→风险分类，注入式 LLM 闭包） | ✅ 797 tests |
 | `136-p27-batch10-agent-loop.md` | **P2.7 Batch 10**：Agent Loop 接线（Session 状态机 + 逐步执行 + 单次重规划 + 取消） | ✅ 803 tests |
+| `138-p27-batch11-provider-caps.md` | **P2.7 Batch 11**：A01 Provider Capabilities + Health Check | ✅ 806 tests |
+| `136-p27-batch10-agent-loop.md` | **P2.7 Batch 10**：Agent Loop 接线（Session 状态机 + 逐步执行 + 单次重规划 + 取消） | ✅ 803 tests |
 | `135-p27-batch9-p26f-stress.md` | **P2.7 Batch 9 + P2.6-F**：pipeline 风险等级收敛修复 + durable stress/recovery 测试（并发/重启/20-run sweep） | ✅ 800 tests |
+| `137-p26-final-closure.md` | **P2.6 最终收口**：F01 Diagnostics + F02-F06 QA 矩阵全绿 ＝ **P2.6 完成**（E02-E05 画布 VIEW 推迟） | ✅ 804 tests |
 | `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 | `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 | `103-p29-kickoff.md` | **P2.9 开工**：系统集成层评审（Capability Resolver/Adapter 架构/风险分类）+ 6 批次计划 | 📋 计划冻结 |

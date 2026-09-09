@@ -19,6 +19,7 @@ pub mod structured_output;
 pub mod llm;
 pub mod planner;
 pub mod prompt;
+pub mod provider_caps;
 
 pub use llm::{LlmError, LlmProvider, LlmRequest, LlmResponse, MockLlmProvider};
 pub use planner::{LlmPlanner, PlannerDiagnostics, PlannerResult};
