@@ -12,6 +12,7 @@ pub mod agent_contract;
 pub mod agent_loop;
 pub mod agent_session;
 pub mod clarification;
+pub mod proposal_builder;
 pub mod risk_classifier;
 pub mod intent;
 pub mod pipeline;
