@@ -335,7 +335,9 @@ P27-001       AI Contract v1（Intent/PlanStep/           ✅ Batch 1
               fail-closed 校验，authority-free）—— 101 号
 P27-A03       Intent/Entity 确定性规则解析               ✅ Batch 2
               （无 LLM/网络；LLM 可后替换同契约）—— 117 号
-P27-000/002/003 + A01/A02/A04-A06/B/C/D/E/F/G/H 线     ⏳ 未开始
+P27-A05       结构化输出校验器（LLM 输出唯一通道         ✅ Batch 3
+              fail-closed）—— 118 号
+P27-000/002/003 + A01/A02/A04/A06/B/C/D/E/F/G/H 线     ⏳ 未开始
               ※ B05 + Workflow Integration 依赖
               P2.6 B 线（Durable Runtime）先行
 

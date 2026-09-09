@@ -194,6 +194,10 @@ pub struct QueryResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginResultItem {
     pub title: String,
+    /// Stable logical id (INV-028): when present, the host assigns the
+    /// command id `<manifest.id>:<id>` instead of deriving it from the title.
+    #[serde(default)]
+    pub id: Option<String>,
     #[serde(default)]
     pub subtitle: Option<String>,
     #[serde(default)]

@@ -38,5 +38,7 @@
 
 - 影响：AI Planner 暂用 live query snapshot 作为 catalog（ADR-0016 Addendum 记录的临时适配）。
 - 出口：外部插件实现 empty-text discovery 后，`ReferenceResolver::fresh_query` 自动接管，Planner 零改动。
-- **进展（2026-09-05，MVP4.3/ADR-0018）**：MCP 半边已闭合——`launcher-core::providers::mcp::McpProvider` 对空 query 返回 catalog 全量（`LAUNCHER_SNAPSHOT` 无关；MCP-005 ✅）。本 TODO 对**外部插件**侧仍开放。
+- **进展（2026-09-05，MVP4.3/ADR-0018）**：MCP 半边已闭合——`launcher-core::providers::mcp::McpProvider` 对空 query 返回 catalog 全量（`LAUNCHER_SNAPSHOT` 无关；MCP-005 ✅）。
+- **进展（2026-09-07，外部插件半边闭合 ✅）**：`PluginProvider` 空 query 触发 discovery（`discover()`：spawn + 空 text query，best-effort）；`launcher-plugin-api::serve_with_catalog` 让插件声明静态 catalog（空 text 返回，score 0.0 不进 popup 排名）；结果条目可选 `id` 字段落地稳定命令身份（INV-028）。闭环验证：`apps/calculator-plus/tests/discovery_workflow.rs`——空 session 下 ActionReference 经 fresh discovery 解析并通过 PluginBroker 执行（`{"provider": ..., "result": {"value": "6"}}`），错误 reference 如实降级 CommandNotFound。Planner 零改动（fresh_query 自动接管）。
+- **状态：已关闭（两半均闭合）。**
 - 护栏：禁止"live catalog 临时方案"悄悄变成永久双路径（ADR-0016 Addendum 2）。

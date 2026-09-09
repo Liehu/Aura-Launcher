@@ -162,6 +162,28 @@ impl PluginProvider {
         self.handle = Some(handle);
         Ok(())
     }
+
+    /// Empty-text discovery (DISCOVERY-TODO-001 / WF-006 option 2): ask the
+    /// plugin for its static catalog so `ReferenceResolver::fresh_query` can
+    /// resolve ActionReferences without a user-typed query. Best-effort:
+    /// failures yield an empty catalog (local failure, never surfaces).
+    fn discover(&mut self) -> Vec<Command> {
+        if let Err(e) = self.ensure_running() {
+            warn!(plugin = %self.manifest.id, error = %e, "plugin.discovery_failed");
+            return Vec::new();
+        }
+        match self.handle.as_mut().expect("checked above").query("") {
+            Ok(cmds) => {
+                self.last_used = Some(Instant::now());
+                cmds
+            }
+            Err(e) => {
+                warn!(plugin = %self.manifest.id, error = %e, "plugin.discovery_failed");
+                self.handle = None;
+                Vec::new()
+            }
+        }
+    }
 }
 
 impl Provider for PluginProvider {
@@ -178,8 +200,11 @@ impl Provider for PluginProvider {
         if self.disabled || self.quarantined {
             return Vec::new();
         }
+        // DISCOVERY-TODO-001 closed: empty query = discovery request. Catalog
+        // items are score-0.0 so popup ranking filters them; the workflow/AI
+        // fresh_query path calls the provider directly and sees them.
         if q.normalized.is_empty() {
-            return Vec::new();
+            return self.discover();
         }
         let t0 = std::time::Instant::now();
         if let Err(e) = self.ensure_running() {

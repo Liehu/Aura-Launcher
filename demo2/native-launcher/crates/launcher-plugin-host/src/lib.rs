@@ -434,8 +434,14 @@ impl PluginHandle {
                     ),
                 }
             }
+            // stable identity (INV-028): plugin-declared id wins; legacy
+            // items fall back to the title-derived id (unchanged behavior)
+            let cmd_id = match &item.id {
+                Some(id) => format!("{}:{}", self.manifest.id, id),
+                None => format!("{}:{}", self.manifest.id, item.title),
+            };
             cmds.push(DomainCommand {
-                id: format!("{}:{}", self.manifest.id, item.title),
+                id: cmd_id,
                 title: item.title,
                 subtitle: item.subtitle,
                 icon: None,

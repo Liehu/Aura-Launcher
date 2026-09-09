@@ -19,7 +19,22 @@ pub fn serve<F>(handler: F) -> Result<(), std::io::Error>
 where
     F: FnMut(&str) -> serde_json::Value,
 {
-    serve_with_actions(handler, |_, _, _| {
+    serve_with_catalog(handler, Vec::new())
+}
+
+/// Serve with a static discovery catalog (DISCOVERY-TODO-001 / WF-006
+/// option 2): an EMPTY query text is a discovery request and returns the
+/// catalog instead of calling the query handler. This makes the plugin's
+/// commands resolvable by `ReferenceResolver::fresh_query` (workflow/AI/MCP)
+/// without any user-typed query.
+pub fn serve_with_catalog<F>(
+    handler: F,
+    catalog: Vec<serde_json::Value>,
+) -> Result<(), std::io::Error>
+where
+    F: FnMut(&str) -> serde_json::Value,
+{
+    serve_with_catalog_and_actions(handler, catalog, |_, _, _| {
         Err("execute_action not supported by this plugin".to_string())
     })
 }
@@ -28,7 +43,20 @@ where
 /// receives (action_id, input, context_generation) and returns the plugin's
 /// result payload. The execution_id echo envelope is handled here, so plugin
 /// authors still never touch protocol mechanics.
-pub fn serve_with_actions<F, A>(mut handler: F, mut action_fn: A) -> Result<(), std::io::Error>
+pub fn serve_with_actions<F, A>(handler: F, action_fn: A) -> Result<(), std::io::Error>
+where
+    F: FnMut(&str) -> serde_json::Value,
+    A: FnMut(&str, &serde_json::Value, u64) -> Result<serde_json::Value, String>,
+{
+    serve_with_catalog_and_actions(handler, Vec::new(), action_fn)
+}
+
+/// Full form: query handler + discovery catalog + execute_action handler.
+pub fn serve_with_catalog_and_actions<F, A>(
+    mut handler: F,
+    catalog: Vec<serde_json::Value>,
+    mut action_fn: A,
+) -> Result<(), std::io::Error>
 where
     F: FnMut(&str) -> serde_json::Value,
     A: FnMut(&str, &serde_json::Value, u64) -> Result<serde_json::Value, String>,
@@ -75,7 +103,13 @@ where
                 let parsed = serde_json::from_value::<QueryParams>(request.params);
                 let response = match parsed {
                     Ok(q) => {
-                        let items = handler(&q.text);
+                        // empty text = discovery request (WF-006 option 2):
+                        // return the static catalog, never the query handler
+                        let items = if q.text.is_empty() {
+                            serde_json::Value::Array(catalog.clone())
+                        } else {
+                            handler(&q.text)
+                        };
                         // wrap into the contract shape and echo the query_id
                         Response::ok(
                             request.id,

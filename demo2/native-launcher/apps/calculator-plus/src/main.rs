@@ -7,7 +7,7 @@
 //!   the command survives. Only `system.*` actions are used (review 16 §16);
 //!   the `plugin.*` execution RPC is out of scope.
 
-use launcher_plugin_api::serve_with_actions;
+use launcher_plugin_api::serve_with_catalog_and_actions;
 
 fn evaluate(input: &str) -> Option<f64> {
     if input.is_empty() {
@@ -174,16 +174,55 @@ fn handle_query(text: &str) -> serde_json::Value {
     }
 }
 
+/// Static discovery catalog (DISCOVERY-TODO-001 / WF-006 option 2): returned
+/// for EMPTY query text, letting `ReferenceResolver::fresh_query` resolve an
+/// ActionReference to the calculator's evaluate action without a typed query.
+/// Score 0.0 keeps it out of the popup ranking; plugin.* action types are
+/// identity-bound to this manifest id and require `plugin.invoke`.
+fn discovery_catalog() -> Vec<serde_json::Value> {
+    vec![serde_json::json!({
+        "id": "evaluate",
+        "title": "Calculator: evaluate expression",
+        "subtitle": "workflow-discoverable",
+        "score": 0.0,
+        "actions": [{
+            "id": "invoke",
+            "title": "Evaluate",
+            "type": "plugin.com.example.calculator.plus",
+            "input": { "expression": "" },
+            "requires": ["plugin.invoke"],
+        }],
+    })]
+}
+
 fn main() {
-    serve_with_actions(
+    serve_with_catalog_and_actions(
         handle_query,
+        discovery_catalog(),
         |action_id, input, _generation| match action_id {
             "echo" => Ok(serde_json::json!({
                 "echoed": input,
                 "by": "calculator-plus",
             })),
+            "invoke" => {
+                let expr = input
+                    .get("expression")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                match evaluate(expr) {
+                    Some(v) => {
+                        let value = if v == v.trunc() {
+                            format!("{}", v as i64)
+                        } else {
+                            format!("{v}")
+                        };
+                        Ok(serde_json::json!({ "value": value }))
+                    }
+                    None => Err(format!("cannot evaluate: {expr}")),
+                }
+            }
             other => Err(format!("unknown action: {other}")),
-        },
+        }
     )
     .expect("plugin io");
 }
