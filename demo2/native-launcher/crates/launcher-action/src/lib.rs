@@ -96,7 +96,29 @@ pub enum Effect {
         action_id: Option<String>,
         input: serde_json::Value,
     },
+    /// P2.9 Windows Adapter: a validated SystemCommand was applied through
+    /// the real Win32 call (window/process/power/uri). The string names the
+    /// applied operation (e.g. "window.focus").
+    SystemApplied(String),
     Skipped,
+}
+
+#[cfg(windows)]
+pub mod system_adapter;
+
+/// Non-Windows stub: the adapter is Windows-only by definition; every
+/// command resolves to Unsupported (fail-closed).
+#[cfg(not(windows))]
+pub mod system_adapter {
+    use crate::{ActionError, Effect};
+    use launcher_domain::system::SystemCommand;
+
+    pub fn execute_system_command(
+        _cmd: &SystemCommand,
+        _confirmed: bool,
+    ) -> Result<Effect, ActionError> {
+        Err(ActionError::Unsupported)
+    }
 }
 
 /// Normalize and reject clearly invalid paths (security baseline, spec 16).

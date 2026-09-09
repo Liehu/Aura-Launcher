@@ -85,6 +85,8 @@ windows = { version = "0.58", features = [
     "Win32_Security_Cryptography",
     "Win32_Security_Credentials",
     "Win32_System_JobObjects",
+    "Win32_System_Power",
+    "Win32_System_Shutdown",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_Security",
     "Win32_Storage_FileSystem",
