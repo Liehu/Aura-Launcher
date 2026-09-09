@@ -1715,6 +1715,73 @@ fn main() -> anyhow::Result<()> {
             });
         }
     });
+    // P2.6-D03-D06: durable trigger queue consumption — every source
+    // (hotkey/plugin/schedule/ai-mcp) enqueues into the SQLite FIFO; this
+    // service dequeues events and starts the matching workflow definition
+    // through the normal start_workflow pipeline (Resolver rules unchanged).
+    {
+        let state = state.clone();
+        let ui_weak = ui_weak.clone();
+        let wf_dir = data_dir().join("workflows");
+        let trig_db = data_dir().join("triggers.db");
+        std::thread::Builder::new()
+            .name("trigger-service".into())
+            .spawn(move || {
+                use launcher_workflow::triggers::TriggerQueue;
+                let queue = match TriggerQueue::open(&trig_db) {
+                    Ok(q) => q,
+                    Err(e) => {
+                        warn!(error = %e, "trigger queue unavailable");
+                        return;
+                    }
+                };
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    match queue.dequeue() {
+                        Ok(Some(ev)) => {
+                            info!(kind = ev.kind.as_str(), workflow = %ev.workflow_id, "trigger dequeued");
+                            // find the definition whose workflow id matches and
+                            // start it through the normal pipeline (v1 defs are
+                            // plain JSON in the workflows dir)
+                            let mut started = false;
+                            if let Ok(entries) = std::fs::read_dir(&wf_dir) {
+                                for e in entries.flatten() {
+                                    let p = e.path();
+                                    if p.extension().and_then(|x| x.to_str()) != Some("json") {
+                                        continue;
+                                    }
+                                    let Ok(raw) = std::fs::read_to_string(&p) else {
+                                        continue;
+                                    };
+                                    let Ok(def) = serde_json::from_str::<
+                                        launcher_domain::WorkflowDefinition,
+                                    >(&raw) else {
+                                        continue;
+                                    };
+                                    if def.id == ev.workflow_id {
+                                        workflow_service::start_workflow(
+                                            state.clone(),
+                                            ui_weak.clone(),
+                                            def,
+                                        );
+                                        started = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            let _ = started;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            warn!(error = %e, "trigger dequeue failed");
+                            std::thread::sleep(std::time::Duration::from_secs(5));
+                        }
+                    }
+                }
+            })
+            .ok();
+    }
+
     tray.on_quit_requested(|| {
         // P2.4-E03: persist the plugin diagnostics snapshot for dev tooling /
         // support bundles (bounded ring, observation-only data).
