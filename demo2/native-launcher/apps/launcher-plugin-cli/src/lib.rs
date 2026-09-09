@@ -21,6 +21,7 @@
 
 pub mod foundation;
 pub mod resolver;
+pub mod transactional;
 
 use anyhow::{anyhow, bail, Context, Result};
 use launcher_domain::PluginManifest;
