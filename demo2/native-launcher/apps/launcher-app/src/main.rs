@@ -2050,7 +2050,11 @@ fn main() -> anyhow::Result<()> {
         // Workflow Runtime Surface events (UI-CONTRACT section 13): Confirm
         // resumes the paused run via the service channel; dismiss keeps the
         // run paused (Esc never cancels submitted effects)
-        ui.on_workflow_confirm(move || crate::workflow_service::confirm_active_run());
+        ui.on_workflow_confirm(move || {
+            crate::workflow_service::confirm_active_run();
+            // P2.7-D02: the confirm button also approves a pending agent plan
+            crate::agent_service::confirm_active_approval();
+        });
         ui.on_workflow_dismiss({
             let state = state.clone();
             let ui_weak = ui_weak.clone();

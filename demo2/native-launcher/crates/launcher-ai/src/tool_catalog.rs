@@ -228,7 +228,7 @@ mod tests {
         let cat = ToolCatalog::project(&actions, &[]);
         let limits = ProjectionLimits { max_entries: 200, max_chars: 600 };
         let (json1, n1) = cat.render_json(&limits);
-        let (json2, n2) = cat.render_json(&limits);
+        let (json2, _n2) = cat.render_json(&limits);
         assert_eq!(json1, json2);
         assert!(n1 < 50, "char budget must truncate: {n1}");
         assert!(json1.len() <= 600 + 2);

@@ -67,6 +67,7 @@
 | `148-p27-b01-b03-tool-catalog-plan.md` | **P2.7 Batch 17**：B01 Tool Catalog 投影 + B02 版本化 Plan Schema + B03 Plan Validator（fail-closed 对目录校验） | ✅ 832 tests |
 | `149-p29-windows-adapter.md` | **P2.9 Windows Adapter**：SystemCommand → 真 Win32（Window/Process/Power/URI，确认门 fail-closed） | ✅ 835 tests |
 | `150-p26-e03-e05-editor-view.md` | **P2.6 E02–E05 收口**：Graph Editor Surface 接入 AppWindow（同窗口模式/undo/redo/草稿导入导出） | ✅ 835 tests |
+| `151-p27-d-approval.md` | **P2.7 Batch 18**：D 线 AI Approval（审批门/单次使用/过期取消/编辑计划 + §23 run_agent 接线 + D02 审批 UI） | ✅ 842 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

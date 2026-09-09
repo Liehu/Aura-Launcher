@@ -8,6 +8,7 @@
 
 use crate::agent::AgentRunStatus;
 use crate::agent_session::{AgentSession, TransitionError};
+use crate::approval::{ApprovalDecision, ApprovalGate, ApprovalRequest};
 use crate::pipeline::{run_pipeline, PipelineOutcome};
 use crate::clarification::ClarificationPolicy;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,6 +18,30 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// loop itself.
 pub trait TurnExecutor {
     fn execute(&mut self, action_ref: &str, input: &serde_json::Value) -> Result<serde_json::Value, String>;
+}
+
+/// D02 host binding (§23 `request_approval_if_required`): when a plan needs
+/// approval, the loop mints an [`ApprovalRequest`] and blocks on the host.
+/// `None` = no decision (declined / timed out) → the run cancels.
+pub trait ApprovalSink {
+    fn request_approval(&mut self, request: &ApprovalRequest) -> Option<ApprovalDecision>;
+}
+
+/// Default sink: no UI wired — plans needing approval never auto-execute
+/// (fail closed: the run cancels instead).
+pub struct NoApprovalSink;
+
+impl ApprovalSink for NoApprovalSink {
+    fn request_approval(&mut self, _request: &ApprovalRequest) -> Option<ApprovalDecision> {
+        None
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Result of one full agent run.
@@ -41,6 +66,7 @@ pub fn run_agent(
     cancel: &AtomicBool,
     policy: &ClarificationPolicy,
     context_budget: usize,
+    approval: &mut dyn ApprovalSink,
 ) -> LoopStop {
     let observe = session.transition(AgentRunStatus::Observing, true);
     if let Err(TransitionError::StepBudgetExhausted) = observe {
@@ -62,7 +88,39 @@ pub fn run_agent(
                 let _ = session.transition(AgentRunStatus::Failed, false);
                 return LoopStop::Failed { step_id: "(clarify)".into(), error: question };
             }
-            Ok(PipelineOutcome::Proposal { proposal, .. }) => {
+            Ok(PipelineOutcome::Proposal { mut proposal, .. }) => {
+                // §23 request_approval_if_required: a plan with approval
+                // steps blocks on the host BEFORE any execution. The gate
+                // enforces expiry + single use (§21 run/event-scoped);
+                // no decision = cancel (fail closed, D05).
+                if proposal.plan.iter().any(|s| s.requires_approval) {
+                    let mut gate = ApprovalGate::default();
+                    let Some(req) =
+                        gate.request(&session.session_id, input, &proposal.plan, now_ms())
+                    else {
+                        let _ = session.transition(AgentRunStatus::Cancelled, false);
+                        return LoopStop::Cancelled;
+                    };
+                    match approval.request_approval(&req) {
+                        Some(decision) => match gate.decide(&req.request_id, decision.decision, now_ms()) {
+                            Ok(steps) if steps.is_empty() => {
+                                // Reject: never executes
+                                let _ = session.transition(AgentRunStatus::Cancelled, false);
+                                return LoopStop::Cancelled;
+                            }
+                            Ok(steps) => proposal.plan = steps,
+                            Err(_) => {
+                                let _ = session.transition(AgentRunStatus::Cancelled, false);
+                                return LoopStop::Cancelled;
+                            }
+                        },
+                        None => {
+                            let _ = gate.cancel(&req.request_id);
+                            let _ = session.transition(AgentRunStatus::Cancelled, false);
+                            return LoopStop::Cancelled;
+                        }
+                    }
+                }
                 let _ = session.transition(AgentRunStatus::Executing, true);
                 // EXECUTE each step through the host (Resolver → Engine);
                 // §25 replanning: on the first failure, re-plan once and
@@ -117,6 +175,7 @@ mod tests {
     use super::*;
     use crate::agent::AgentRunStatus;
     use crate::agent_session::AgentSession;
+    use crate::approval::Decision;
     use crate::clarification::ClarificationPolicy;
 
     struct Host {
@@ -158,6 +217,7 @@ mod tests {
         let stop = run_agent(
             &mut session, "do the thing", "", "catalog",
             &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256,
+            &mut NoApprovalSink,
         );
         assert_eq!(stop, LoopStop::Completed);
         assert_eq!(host.calls, vec!["command:app:thing", "command:app:after"]);
@@ -172,7 +232,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         // Host fails only on the very first execute of the session's first
         // turn; the replan (second turn) succeeds.
-        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256);
+        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256, &mut NoApprovalSink);
         let _ = stop;
         assert!(matches!(
             session.state(),
@@ -187,8 +247,81 @@ mod tests {
         let cancel = AtomicBool::new(false);
         cancel.store(true, Ordering::SeqCst);
         let mut host = Host { calls: vec![], fail_first: false };
-        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256);
+        let stop = run_agent(&mut session, "do", "", "cat", &llm, &mut host, &cancel, &ClarificationPolicy::default(), 256, &mut NoApprovalSink);
         assert_eq!(stop, LoopStop::Cancelled);
         assert_eq!(session.state(), AgentRunStatus::Cancelled);
+    }
+
+    /// D02/D03: a plan needing approval never runs without a decision
+    /// (NoApprovalSink = fail closed → Cancelled, nothing executed).
+    #[test]
+    fn approval_required_blocks_execution_without_sink() {
+        const NEEDS_APPROVAL: &str = r#"{
+            "proposal_id": "p", "session_id": "s",
+            "user_goal": "risky", "intent": "execute",
+            "confidence": 0.9,
+            "plan": [
+                {"step_id": "a", "action_ref": "shell:run_script", "input": {}, "requires_approval": true}
+            ]
+        }"#;
+        fn llm_risky(_p: String) -> Result<String, String> {
+            Ok(NEEDS_APPROVAL.into())
+        }
+        let mut session = AgentSession::new("s", 10);
+        let mut host = Host { calls: vec![], fail_first: false };
+        let cancel = AtomicBool::new(false);
+        let stop = run_agent(
+            &mut session, "risky", "", "cat", &llm_risky, &mut host, &cancel,
+            &ClarificationPolicy::default(), 256, &mut NoApprovalSink,
+        );
+        assert_eq!(stop, LoopStop::Cancelled);
+        assert!(host.calls.is_empty(), "no step may execute without approval");
+        assert_eq!(session.state(), AgentRunStatus::Cancelled);
+    }
+
+    /// D02: approving lets the same plan execute; rejecting cancels.
+    #[test]
+    fn approval_decision_routes_execution() {
+        const NEEDS_APPROVAL: &str = r#"{
+            "proposal_id": "p", "session_id": "s",
+            "user_goal": "risky", "intent": "execute",
+            "confidence": 0.9,
+            "plan": [
+                {"step_id": "a", "action_ref": "shell:run_script", "input": {}, "requires_approval": true}
+            ]
+        }"#;
+        fn llm_risky(_p: String) -> Result<String, String> {
+            Ok(NEEDS_APPROVAL.into())
+        }
+        struct ApprovingSink;
+        impl ApprovalSink for ApprovingSink {
+            fn request_approval(&mut self, r: &ApprovalRequest) -> Option<ApprovalDecision> {
+                Some(ApprovalDecision { request_id: r.request_id.clone(), decision: Decision::Approve })
+            }
+        }
+        struct RejectingSink;
+        impl ApprovalSink for RejectingSink {
+            fn request_approval(&mut self, r: &ApprovalRequest) -> Option<ApprovalDecision> {
+                Some(ApprovalDecision { request_id: r.request_id.clone(), decision: Decision::Reject })
+            }
+        }
+        let mut session = AgentSession::new("s", 10);
+        let mut host = Host { calls: vec![], fail_first: false };
+        let cancel = AtomicBool::new(false);
+        let stop = run_agent(
+            &mut session, "risky", "", "cat", &llm_risky, &mut host, &cancel,
+            &ClarificationPolicy::default(), 256, &mut ApprovingSink,
+        );
+        assert_eq!(stop, LoopStop::Completed);
+        assert_eq!(host.calls, vec!["shell:run_script"]);
+
+        let mut session = AgentSession::new("s2", 10);
+        let mut host = Host { calls: vec![], fail_first: false };
+        let stop = run_agent(
+            &mut session, "risky", "", "cat", &llm_risky, &mut host, &cancel,
+            &ClarificationPolicy::default(), 256, &mut RejectingSink,
+        );
+        assert_eq!(stop, LoopStop::Cancelled);
+        assert!(host.calls.is_empty());
     }
 }

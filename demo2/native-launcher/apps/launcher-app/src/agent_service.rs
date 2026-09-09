@@ -12,10 +12,12 @@
 //! `agents.db` (SQLite/WAL, corruption-rebuild policy of the store).
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use launcher_ai::agent::AgentExecutionHost as _;
-use launcher_ai::agent_loop::{LoopStop, TurnExecutor, run_agent};
+use launcher_ai::agent_loop::{ApprovalSink, LoopStop, TurnExecutor, run_agent};
+use launcher_ai::approval::{ApprovalDecision, Decision as ApprovalChoice};
 use launcher_ai::agent_session::AgentSession;
 use launcher_ai::agent_session_store::{AgentSessionRecord, AgentSessionStore};
 use launcher_ai::clarification::ClarificationPolicy;
@@ -42,6 +44,100 @@ pub fn cancel_active_agent() {
         if let Some(flag) = slot.as_ref() {
             flag.store(true, Ordering::SeqCst);
         }
+    }
+}
+
+/// D02: confirm channel for a pending agent approval (the runtime surface's
+/// confirm button approves the shown plan; Esc/timeout declines).
+static APPROVAL_TX: std::sync::OnceLock<Mutex<Option<Sender<()>>>> = std::sync::OnceLock::new();
+
+/// Called from the UI confirm path; approves the pending agent plan.
+pub fn confirm_active_approval() {
+    if let Some(cell) = APPROVAL_TX.get() {
+        if let Ok(slot) = cell.lock() {
+            if let Some(tx) = slot.as_ref() {
+                let _ = tx.send(());
+            }
+        }
+    }
+}
+
+/// D02 sink: blocks the agent-run thread on the user's decision while the
+/// runtime surface shows the plan. Approve → Approve; Esc/cancel/timeout →
+/// None (the gate then fails closed). The approval boundary stays intact:
+/// only the shown plan is authorized, once.
+struct UiApprovalSink {
+    ui: slint::Weak<launcher_ui::AppWindow>,
+    cancel: Arc<AtomicBool>,
+    goal: String,
+}
+
+impl ApprovalSink for UiApprovalSink {
+    fn request_approval(
+        &mut self,
+        request: &launcher_ai::approval::ApprovalRequest,
+    ) -> Option<ApprovalDecision> {
+        let items: Vec<launcher_ui::WorkflowItem> = request
+            .steps
+            .iter()
+            .map(|s| launcher_ui::WorkflowItem {
+                step_id: s.step_id.clone().into(),
+                symbol: if s.requires_approval { "!" } else { "◇" }.into(),
+                title: s.action_ref.clone().into(),
+                state_text: if s.requires_approval {
+                    "needs approval".into()
+                } else {
+                    "pending".into()
+                },
+                error: String::new().into(),
+                current: false,
+                execution_id: String::new().into(),
+                failure_class: String::new().into(),
+            })
+            .collect();
+        let ui = self.ui.clone();
+        let title = format!("Approval required · {}", self.goal);
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = ui.upgrade() {
+                let _ = ui.show();
+                ui.set_wf_title(title.into());
+                ui.set_wf_status("Enter = approve · Esc = reject".into());
+                ui.set_wf_items(slint::ModelRc::new(std::rc::Rc::new(
+                    slint::VecModel::from(items),
+                )));
+                ui.set_wf_visible(true);
+            }
+        });
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        if let Ok(mut slot) = APPROVAL_TX.get_or_init(|| Mutex::new(None)).lock() {
+            *slot = Some(tx);
+        }
+        let outcome = loop {
+            if self.cancel.load(Ordering::SeqCst) {
+                break None; // Esc path cancels the whole run
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            if now > request.expires_at_ms {
+                break None; // D05 expiry
+            }
+            match rx.recv_timeout(std::time::Duration::from_millis(150)) {
+                Ok(()) => {
+                    break Some(ApprovalDecision {
+                        request_id: request.request_id.clone(),
+                        decision: ApprovalChoice::Approve,
+                    });
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break None,
+            }
+        };
+        if let Ok(mut slot) = APPROVAL_TX.get_or_init(|| Mutex::new(None)).lock() {
+            *slot = None;
+        }
+        outcome
     }
 }
 
@@ -199,6 +295,11 @@ pub fn start_agent_run(
                     .map(|r| r.text)
                     .map_err(|e| e.to_string())
             };
+            let mut sink = UiApprovalSink {
+                ui: ui_weak2.clone(),
+                cancel: cancel.clone(),
+                goal: goal2.clone(),
+            };
             let stop = run_agent(
                 &mut session,
                 &goal2,
@@ -209,6 +310,7 @@ pub fn start_agent_run(
                 &cancel,
                 &ClarificationPolicy::default(),
                 CONTEXT_BUDGET,
+                &mut sink,
             );
             if let Some(store) = &store {
                 let _ = store.save(&AgentSessionRecord {
