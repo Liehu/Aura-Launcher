@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-09（**P2.6 Batch 3**，见 `docs/history/107-p26-batch3-durable-store.md`；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：718 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-09（**P2.6 Batch 4**，见 `docs/history/108-p26-batch4-scheduler.md`；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：722 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -312,8 +312,11 @@ P26-A03/A04/A05 Join(WaitAll+skip 穿透)/条件引擎/       ✅ Batch 2
 P26-A06       Graph Contract Kit（21 测试四组）          ✅ Batch 3
 P26-B01       Durable Run Store（SQLite checkpoint/      ✅ Batch 3
               恢复扫描/损坏重建）—— 107 号
-P26-B02–B06   Checkpoint 接线/Scheduler/Parallel/        ⏳ 未开始
-              Retry/Recovery Runtime
+P26-B02/B03   Durable Scheduler（执行循环 + 每节点       ✅ Batch 4
+              checkpoint + 恢复不重执行 + 停滞诊断）
+P26-B05/B06   失败策略 v1 / 暂停恢复                     ✅ Batch 4
+P26-B04       Parallel 执行                              ⏳ 未开始
+P26-C~G       Approval/Trigger/Editor/QA/Release         ⏳ 未开始
 P26-B         Durable Runtime（store/checkpoint/         ⏳ 未开始
               scheduler/parallel/retry/recovery）
 P26-C         Human Approval（契约/UI/安全）             ⏳ 未开始
@@ -388,7 +391,7 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 718 全绿）
+cargo test --workspace          # 行为回归闸门（当前 722 全绿）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
 python scripts/release_gate.py    # Release Gate（G01~G14：1.0 + P2.4/P2.5 conformance + evidence/manifest）

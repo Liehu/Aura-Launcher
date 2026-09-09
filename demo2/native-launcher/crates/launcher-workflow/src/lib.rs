@@ -12,6 +12,7 @@
 pub mod proposal;
 pub mod durable;
 pub mod engine;
+pub mod scheduler;
 pub mod graph;
 pub mod v2;
 

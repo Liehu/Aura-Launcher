@@ -39,6 +39,20 @@ impl VariableStore {
     pub fn is_empty(&self) -> bool {
         self.vars.is_empty()
     }
+
+    /// JSON snapshot for durable checkpoints (P2.6-B02).
+    pub fn snapshot(&self) -> serde_json::Value {
+        serde_json::to_value(&self.vars).unwrap_or(serde_json::Value::Null)
+    }
+
+    /// Restore from a checkpoint snapshot.
+    pub fn restore(&mut self, snapshot: &serde_json::Value) {
+        if let Some(map) = snapshot.as_object() {
+            for (k, v) in map {
+                self.vars.insert(k.clone(), v.clone());
+            }
+        }
+    }
 }
 
 /// §3/§4: conditions compare variable references (`$name`) against literals
