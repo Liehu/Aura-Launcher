@@ -54,6 +54,7 @@
 | `101-p27-batch1-ai-contract.md` | **P2.7 Batch 1**：评审（P2.6 依赖裁决）+ AI Contract v1（P27-001：Intent/PlanStep/AgentProposal/RiskLevel，fail-closed 校验） | ✅ 705 tests |
 | `117-p27-batch2-intent.md` | **P2.7 Batch 2**：Intent/Entity 模型（A03，确定性规则解析，无 LLM/网络） | ✅ 755 tests |
 | `118-p27-batch3-structured-output.md` | **P2.7 Batch 3**：结构化输出校验器（A05，LLM 输出唯一通道 fail-closed） | ✅ 763 tests |
+| `119-p27-batch4-clarification.md` | **P2.7 Batch 4**：Clarification Engine（A06，确定性澄清决策） | ✅ 767 tests |
 | `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 | `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 | `103-p29-kickoff.md` | **P2.9 开工**：系统集成层评审（Capability Resolver/Adapter 架构/风险分类）+ 6 批次计划 | 📋 计划冻结 |
