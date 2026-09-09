@@ -61,6 +61,7 @@
 | `134-p27-batch8-pipeline.md` | **P2.7 Batch 8**：Agent Pipeline 串联（Intent→澄清→Prompt→LLM→校验→风险分类，注入式 LLM 闭包） | ✅ 797 tests |
 | `136-p27-batch10-agent-loop.md` | **P2.7 Batch 10**：Agent Loop 接线（Session 状态机 + 逐步执行 + 单次重规划 + 取消） | ✅ 803 tests |
 | `138-p27-batch11-provider-caps.md` | **P2.7 Batch 11**：A01 Provider Capabilities + Health Check | ✅ 806 tests |
+| `145-pinyin-e2e.md` | **Pinyin E2E**：FTS5 pinyin_init 列 + 增量同步 + 搜索 MATCH 扩展 | ✅ 824 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

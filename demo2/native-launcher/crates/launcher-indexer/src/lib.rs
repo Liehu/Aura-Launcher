@@ -143,7 +143,7 @@ impl Indexer {
         // Content indexing is explicitly NOT enabled (spec C01 forbidden
         // list / C06 extension point).
         let fts_available = match conn.execute_batch(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(name, path UNINDEXED)",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(name, pinyin_init, path UNINDEXED)",
         ) {
             Ok(()) => true,
             Err(e) => {
@@ -162,19 +162,32 @@ impl Indexer {
         }
         let tx = self.conn.unchecked_transaction()?;
         tx.execute("DELETE FROM files_fts", [])?;
-        tx.execute(
-            "INSERT INTO files_fts(name, path) SELECT name, path FROM files",
-            [],
-        )?;
+        // compute pinyin initials per file (SQL can't do CJK boundary mapping)
+        let mut stmt = tx.prepare("SELECT name, path FROM files")?;
+        let rows: Vec<(String, String)> = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(stmt);
+        for (name, path) in &rows {
+            let py = launcher_domain::pinyin::pinyin_initials(name);
+            tx.execute(
+                "INSERT INTO files_fts(name, pinyin_init, path) VALUES (?1, ?2, ?3)",
+                params![name, py, path],
+            )?;
+        }
+
         tx.commit()?;
         Ok(())
     }
 
     /// Incremental FTS sync for one upsert (caller's transaction).
     fn fts_upsert(tx: &rusqlite::Transaction, path: &str, name: &str) {
+        let py = launcher_domain::pinyin::pinyin_initials(name);
         if let Err(e) = (|| -> Result<(), rusqlite::Error> {
             tx.execute("DELETE FROM files_fts WHERE path = ?1", params![path])?;
-            tx.execute("INSERT INTO files_fts(name, path) VALUES (?1, ?2)", params![name, path])?;
+            tx.execute("INSERT INTO files_fts(name, pinyin_init, path) VALUES (?1, ?2, ?3)",
+                       params![name, py, path])?;
             Ok(())
         })() {
             tracing::warn!(error = %e, path = %path, "fts upsert skipped (non-fatal)");
@@ -284,7 +297,7 @@ impl Indexer {
         let mut stmt = self.conn.prepare_cached(
             "SELECT f.id, f.path, f.name, f.is_dir, f.size, f.modified_ms
              FROM files_fts j JOIN files f ON f.path = j.path
-             WHERE files_fts MATCH ?1
+             WHERE files_fts MATCH ?1 OR pinyin_init MATCH ?1
              ORDER BY rank, f.is_dir, length(f.name), f.path
              LIMIT ?2",
         )?;
