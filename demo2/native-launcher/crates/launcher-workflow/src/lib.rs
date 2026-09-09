@@ -12,6 +12,7 @@
 pub mod proposal;
 pub mod approval;
 pub mod durable;
+pub mod editor;
 pub mod engine;
 pub mod scheduler;
 pub mod triggers;
