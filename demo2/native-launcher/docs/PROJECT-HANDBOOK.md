@@ -380,8 +380,10 @@ P29-Batch1    系统契约基座（Capability/Risk/Target/      ✅ Batch 1
               零 OS）—— 104 号
 P29-Batch2    File Adapter（SystemCommand→既有 Action    ✅ Batch 2
               映射，fail-closed）—— 105 号
-P29-Batch3-6  Clipboard/Window/Process/Shell/URI/... →   ⏳ 未开始
-              Policy/Confirmation → Race/Security 收口
+P29-Batch3    Process/Window 能力分类与命令构建          ✅ Batch 3
+              （fail-closed taxonomy，纯类型）—— 122 号
+P29-Batch4-6  Shell/URI/... → Policy/Confirmation →     ⏳ 未开始
+              Race/Security 收口（Windows Adapter 后置）
 
 P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
            (E01 Provider 失败/成功路径→结构化诊断 +
