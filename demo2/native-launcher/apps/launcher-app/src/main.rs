@@ -8,6 +8,7 @@
 //! files provider, panic hook, rolling file logs.
 
 mod autostart;
+mod editor_surface;
 mod keyboard_walkthrough;
 mod win_platform;
 mod snapshot;
