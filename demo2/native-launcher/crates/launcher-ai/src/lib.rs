@@ -14,6 +14,7 @@ pub mod agent_session;
 pub mod clarification;
 pub mod proposal_builder;
 pub mod risk_classifier;
+pub mod workflow_proposal;
 pub mod intent;
 pub mod pipeline;
 pub mod structured_output;
