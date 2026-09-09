@@ -14,6 +14,7 @@ pub mod approval;
 pub mod durable;
 pub mod engine;
 pub mod scheduler;
+pub mod triggers;
 pub mod graph;
 pub mod v2;
 

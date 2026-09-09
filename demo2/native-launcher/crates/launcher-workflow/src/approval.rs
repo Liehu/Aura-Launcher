@@ -62,13 +62,37 @@ impl ApprovalStore {
                 node_id     TEXT NOT NULL,
                 action_ref  TEXT NOT NULL,
                 status      TEXT NOT NULL DEFAULT 'pending',
-                updated_ms  INTEGER NOT NULL
+                updated_ms  INTEGER NOT NULL,
+                expires_ms  INTEGER
             );
             "#,
         )?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
+    }
+
+    /// C05: expire a pending request at a fixed deadline — expired approvals
+    /// are treated as REJECTED (fail-closed; the node is skipped, the run
+    /// continues). Non-pending rows are never touched.
+    pub fn expire_before(&self, now_ms: i64) -> Result<usize, rusqlite::Error> {
+        let conn = self.conn.lock().expect("approval lock");
+        conn.execute(
+            "UPDATE approvals SET status = 'rejected', updated_ms = ?1
+             WHERE status = 'pending' AND expires_ms IS NOT NULL AND expires_ms < ?1",
+            params![now_ms],
+        )
+    }
+
+    /// C05: explicit cancellation by the user (same effect as expiry).
+    pub fn cancel(&self, approval_id: &str) -> Result<bool, rusqlite::Error> {
+        let conn = self.conn.lock().expect("approval lock");
+        let n = conn.execute(
+            "UPDATE approvals SET status = 'rejected', updated_ms = ?2
+             WHERE approval_id = ?1 AND status = 'pending'",
+            params![approval_id, now_ms()],
+        )?;
+        Ok(n > 0)
     }
 
     /// Create (or keep) a pending request for (run, node). Idempotent: a
@@ -92,6 +116,26 @@ impl ApprovalStore {
                 action_ref,
                 now_ms()
             ],
+        )?;
+        Ok(())
+    }
+
+    /// C05: request with an expiry deadline (pending past the deadline is
+    /// auto-rejected by [`Self::expire_before`]).
+    pub fn request_with_expiry(
+        &self,
+        approval_id: &str,
+        run_id: &str,
+        node_id: &str,
+        action_ref: &str,
+        expires_ms: i64,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().expect("approval lock");
+        conn.execute(
+            "INSERT OR IGNORE INTO approvals
+             (approval_id, run_id, node_id, action_ref, status, updated_ms, expires_ms)
+             VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6)",
+            params![approval_id, run_id, node_id, action_ref, now_ms(), expires_ms],
         )?;
         Ok(())
     }
@@ -207,6 +251,36 @@ mod tests {
             assert!(!s.decide("unknown", true).unwrap());
         }
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+
+    /// C05: expiry fail-closed — an expired pending request is auto-rejected
+    /// (node skipped), and already-decided rows are never touched.
+    #[test]
+    fn expiry_auto_rejects_pending() {
+        let s = store();
+        s.request_with_expiry("ap-exp", "run-e", "n1", "cmd:x", 1000).unwrap();
+        s.request("ap-keep", "run-e", "n2", "cmd:x").unwrap();
+        s.decide("ap-keep", true).unwrap();
+        let expired = s.expire_before(2000).unwrap();
+        assert_eq!(expired, 1);
+        assert_eq!(
+            s.decision_for("run-e", "n1").unwrap(),
+            Some(ApprovalStatus::Rejected),
+            "expired = rejected (fail-closed)"
+        );
+        assert_eq!(
+            s.decision_for("run-e", "n2").unwrap(),
+            Some(ApprovalStatus::Approved),
+            "decided rows untouched by expiry sweep"
+        );
+        // explicit cancel also rejects a pending request
+        s.request("ap-c", "run-e", "n3", "cmd:x").unwrap();
+        assert!(s.cancel("ap-c").unwrap());
+        assert_eq!(
+            s.decision_for("run-e", "n3").unwrap(),
+            Some(ApprovalStatus::Rejected)
+        );
     }
 
     /// Rejection is a first-class decision (node gets skipped, not run).
