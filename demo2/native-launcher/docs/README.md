@@ -62,6 +62,7 @@
 | `136-p27-batch10-agent-loop.md` | **P2.7 Batch 10**：Agent Loop 接线（Session 状态机 + 逐步执行 + 单次重规划 + 取消） | ✅ 803 tests |
 | `138-p27-batch11-provider-caps.md` | **P2.7 Batch 11**：A01 Provider Capabilities + Health Check | ✅ 806 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
+| `141-p27-batch14-context-builder.md` | **P2.7 Batch 14**：A02 Context Builder（有界/清洗/确定性上下文组装） | ✅ 817 tests |
 | `140-p27-batch13-workflow-proposal.md` | **P2.7 Batch 13**：B05 Workflow Proposal Builder（workflow 触发型提案，fail-closed id 校验） | ✅ 814 tests |
 | `136-p27-batch10-agent-loop.md` | **P2.7 Batch 10**：Agent Loop 接线（Session 状态机 + 逐步执行 + 单次重规划 + 取消） | ✅ 803 tests |
 | `135-p27-batch9-p26f-stress.md` | **P2.7 Batch 9 + P2.6-F**：pipeline 风险等级收敛修复 + durable stress/recovery 测试（并发/重启/20-run sweep） | ✅ 800 tests |
