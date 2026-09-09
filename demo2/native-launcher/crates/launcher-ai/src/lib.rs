@@ -9,6 +9,7 @@
 
 pub mod agent;
 pub mod agent_contract;
+pub mod agent_session;
 pub mod clarification;
 pub mod intent;
 pub mod structured_output;
