@@ -1,0 +1,105 @@
+// Workflow Graph Editor surface (P2.6-E03, spec `P2.6 开发设计规范`
+// §25-§27): a list-style declarative editor VIEW over the host-projected
+// `EditorSurface.rows` — no free canvas, no scripting (UI redline).
+// v1 list surface satisfies the "declarative finite component set" rule;
+// the visual canvas is a later polish item.
+
+import { Theme } from "theme.slint";
+import { Button, LineEdit } from "std-widgets.slint";
+
+export struct EditorRowItem {
+    node_id: string,
+    action_ref: string,
+    condition: string,
+}
+
+// One editor row: node id + action ref + condition badge.
+component EditorLine inherits Rectangle {
+    in property <EditorRowItem> item;
+    in property <bool> selected;
+    callback activated;   // select this row
+    callback remove-clicked;
+
+    height: 34px;
+    background: selected ? Theme.bg-selected : transparent;
+    HorizontalLayout {
+        padding: 6px;
+        spacing: 8px;
+        alignment: start;
+        Text {
+            text: item.node_id;
+            vertical-alignment: center;
+            font-size: 14px;
+            color: Theme.text-primary;
+            width: 120px;
+        }
+        Text {
+            text: item.action_ref;
+            vertical-alignment: center;
+            font-size: 12px;
+            color: Theme.text-secondary;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: item.condition == "" ? "—" : item.condition;
+            font-size: 12px;
+            color: Theme.text-secondary;
+            width: 100px;
+        }
+        Rectangle {
+            width: 54px;
+            height: 22px;
+            border-radius: 4px;
+            background: transparent;
+            border-width: 1px;
+            border-color: Theme.border-default;
+            Text {
+                text: "remove";
+                color: Theme.text-primary;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea {
+                clicked => { root.remove-clicked(); }
+            }
+        }
+    }
+}
+
+// The editor surface: rows + command callbacks routed to the host
+// (EditorSurface methods) — the surface itself holds no logic.
+export component GraphEditorSurface inherits Window {
+    in property <[EditorRowItem]> rows;
+    in property <string> status-text;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+    callback add-node(string /* node-id */, string /* action-ref */);
+    callback remove-node(string /* node-id */);
+    callback undo-requested();
+    callback redo-requested();
+    callback export-requested();
+
+    background: Theme.bg-canvas;
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            LineEdit { placeholder-text: "node-id"; width: 100px; edited(t) => { root.add-node(t, "cmd:" + t); } }
+            Button { text: "Undo"; enabled: root.can-undo; clicked => { root.undo-requested(); } }
+            Button { text: "Redo"; enabled: root.can-redo; clicked => { root.redo-requested(); } }
+            Button { text: "Export"; clicked => { root.export-requested(); } }
+        }
+        for line-item[root-index] in root.rows: EditorLine {
+            item: line-item;
+            activated => { }
+        }
+        Text {
+            text: root.status-text;
+            color: Theme.text-secondary;
+            font-size: 12px;
+        }
+    }
+}
