@@ -2717,6 +2717,7 @@ dependencies = [
  "launcher-domain",
  "launcher-mcp",
  "launcher-workflow",
+ "rusqlite",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

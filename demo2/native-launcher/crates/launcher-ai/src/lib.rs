@@ -11,6 +11,7 @@ pub mod agent;
 pub mod agent_contract;
 pub mod agent_loop;
 pub mod agent_session;
+pub mod agent_session_store;
 pub mod clarification;
 pub mod context_builder;
 pub mod proposal_builder;
