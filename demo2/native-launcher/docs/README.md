@@ -57,6 +57,7 @@
 | `119-p27-batch4-clarification.md` | **P2.7 Batch 4**：Clarification Engine（A06，确定性澄清决策） | ✅ 767 tests |
 | `120-p27-batch5-prompt-builder.md` | **P2.7 Batch 5**：Prompt Builder + 注入清洗（A04/E06-lite/A02 上下文预算） | ✅ 770 tests |
 | `121-p27-batch6-agent-session.md` | **P2.7 Batch 6**：Agent Session 状态机（C01/C02，白名单迁移+步预算） | ✅ 773 tests |
+| `133-p27-batch7-risk-classifier.md` | **P2.7 Batch 7**：B06 Risk Classifier（L0-L4 确定性分类，未知 fail-closed） | ✅ 793 tests |
 | `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 | `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 | `103-p29-kickoff.md` | **P2.9 开工**：系统集成层评审（Capability Resolver/Adapter 架构/风险分类）+ 6 批次计划 | 📋 计划冻结 |
