@@ -55,6 +55,7 @@
 | `102-p28-kickoff.md` | **P2.8 开工**：三份文档评审（69 任务/11 组）+ 依赖裁决（与 P2.6/P2.7 可并行）+ 6 批次计划 | 📋 计划冻结 |
 | `103-p29-kickoff.md` | **P2.9 开工**：系统集成层评审（Capability Resolver/Adapter 架构/风险分类）+ 6 批次计划 | 📋 计划冻结 |
 | `104-p29-batch1-contract.md` | **P2.9 Batch 1**：系统集成契约基座（Capability/Risk/Target/Command/Resolver 骨架/Mock，纯类型零 OS） | ✅ 708 tests |
+| `105-p29-batch2-file-adapter.md` | **P2.9 Batch 2**：File Adapter（SystemCommand → 既有 host-owned Action 映射，fail-closed） | ✅ 711 tests |
 
 ## 权威文档（不在本目录）
 

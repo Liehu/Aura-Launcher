@@ -172,7 +172,7 @@ mod tests {
         assert!(ok.approved_by_policy);
         assert!(!ok.risk.requires_confirmation());
 
-        let mut r = SystemResolver {
+        let r = SystemResolver {
             denied_operations: vec!["format_disk".into()],
         };
         let denied = r.resolve(&cmd("format_disk", SystemRisk::Privileged)).unwrap();
