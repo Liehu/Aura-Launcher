@@ -16,6 +16,7 @@ pub mod durable;
 pub mod editor;
 pub mod engine;
 pub mod scheduler;
+pub mod trigger_sources;
 pub mod triggers;
 pub mod graph;
 pub mod v2;
