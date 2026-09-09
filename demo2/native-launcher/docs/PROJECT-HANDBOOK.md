@@ -2,7 +2,7 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-09（**P2.8 Batch 4**，见 `docs/history/114-p28-batch4-trust.md`；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：745 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-09（**P2.8 Batch 5**，见 `docs/history/115-p28-batch5-repository.md`；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：748 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
 
 ---
 
@@ -354,7 +354,9 @@ P28-Batch3    事务化 Install（stage→activate +          ✅ Batch 3
               逆序回滚）—— 113 号
 P28-Batch4    Trust Model fail-closed 矩阵 + 生命周期    ✅ Batch 4
               管理器（§8/§9/§35）—— 114 号
-P28-Batch5-6  Repository/UI + 集成/QA/Gate               ⏳ 未开始
+P28-Batch5    Repository Index + Marketplace 搜索        ✅ Batch 5
+              （原子持久化/发布校验和/trust badge）—— 115 号
+P28-Batch6    集成/Audit/QA/Gate 收口                    ⏳ 未开始
 
 ── P2.9 System Integration & Automation ────────────────────────────
 P29           评审 + 6 批次计划冻结（103 号）：           📋 Batch 1 待启动
@@ -407,7 +409,7 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 745 全绿）
+cargo test --workspace          # 行为回归闸门（当前 748 全绿）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
 python scripts/release_gate.py    # Release Gate（G01~G14：1.0 + P2.4/P2.5 conformance + evidence/manifest）

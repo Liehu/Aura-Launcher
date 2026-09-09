@@ -20,6 +20,7 @@
 //! handshake); dev tooling never bypasses host isolation (P2.4-D05).
 
 pub mod foundation;
+pub mod repository;
 pub mod resolver;
 pub mod transactional;
 pub mod trust;
