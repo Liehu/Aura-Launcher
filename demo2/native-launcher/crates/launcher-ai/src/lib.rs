@@ -9,6 +9,7 @@
 
 pub mod agent;
 pub mod agent_contract;
+pub mod agent_loop;
 pub mod agent_session;
 pub mod clarification;
 pub mod risk_classifier;
