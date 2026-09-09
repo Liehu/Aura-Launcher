@@ -71,6 +71,7 @@
 | `108-p26-batch4-scheduler.md` | **P2.6 Batch 4**：Durable Scheduler（B02 每节点 checkpoint + B03 执行循环 + B05 失败策略 + B06 暂停/恢复不重执行） | ✅ 722 tests |
 | `109-p26-batch5-approval.md` | **P2.6 Batch 5**：Human Approval（C01 契约/C02 存储/C03 面向/C04 执行安全：approve 执行、reject 跳过、restart-safe） | ✅ 727 tests |
 | `110-p26-batch6-expiry-triggers.md` | **P2.6 Batch 6**：C05 审批过期/取消（fail-closed）+ D01/D02 Trigger 契约与持久 FIFO 队列 | ✅ 729 tests |
+| `126-p26-batch7-parallel.md` | **P2.6 Batch 7**：B04 Parallel 执行（ready 集合并发 + 确定性输出应用 + StepExecutor: Send） | ✅ 784 tests |
 | `111-p28-batch1-foundation.md` | **P2.8 Batch 1**：Foundation（PluginIdentity + SHA-256 Integrity + 生命周期状态机 fail-closed） | ✅ 734 tests |
 | `112-p28-batch2-resolver.md` | **P2.8 Batch 2**：Dependency Resolver + InstallPlan（确定性拓扑/缺失/环可解释/共享依赖单次） | ✅ 740 tests |
 | `113-p28-batch3-transactional-install.md` | **P2.8 Batch 3**：事务化 Install（stage→activate + 逆序回滚，回滚失败可报告） | ✅ 743 tests |
