@@ -64,6 +64,7 @@
 | `145-pinyin-e2e.md` | **Pinyin E2E**：FTS5 pinyin_init 列 + 增量同步 + 搜索 MATCH 扩展 | ✅ 824 tests |
 | `146-p26-p29-final-summary.md` | **P2.6–P2.9 全阶段总结**：各阶段状态矩阵 + 待续优先级 | 📋 交接文档 |
 | `147-p27-c03-c07-host-wiring.md` | **P2.7 Batch 16**：C03–C07 宿主接线（agent ` ` 前缀触发 + CoreAgentHost 冻结链执行 + Esc 取消 + agents.db 持久化 + `[llm]` 配置） | ✅ 824 tests |
+| `148-p27-b01-b03-tool-catalog-plan.md` | **P2.7 Batch 17**：B01 Tool Catalog 投影 + B02 版本化 Plan Schema + B03 Plan Validator（fail-closed 对目录校验） | ✅ 832 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

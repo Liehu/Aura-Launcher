@@ -14,6 +14,8 @@ pub mod agent_session;
 pub mod agent_session_store;
 pub mod clarification;
 pub mod context_builder;
+pub mod plan;
+pub mod plan_validator;
 pub mod proposal_builder;
 pub mod risk_classifier;
 pub mod workflow_proposal;
@@ -24,6 +26,7 @@ pub mod llm;
 pub mod planner;
 pub mod prompt;
 pub mod provider_caps;
+pub mod tool_catalog;
 
 pub use llm::{LlmError, LlmProvider, LlmRequest, LlmResponse, MockLlmProvider};
 pub use planner::{LlmPlanner, PlannerDiagnostics, PlannerResult};

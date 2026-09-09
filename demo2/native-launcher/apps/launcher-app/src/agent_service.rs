@@ -79,28 +79,39 @@ impl TurnExecutor for CoreTurnExecutor {
     }
 }
 
-/// Catalog projection for the planner: the neutral `ActionCatalogItem`s plus
-/// the `ref` key the model echoes back in plan steps. Same lossy projection
-/// rules as the proposal layer (no authority state survives).
+/// Catalog projection for the planner (B01): the unified Tool Catalog over
+/// the action catalog + installed workflows, rendered through the
+/// launcher-ai projection (bounded, deterministic, `ref`-keyed).
 fn catalog_json(state: &Arc<Mutex<AppState>>) -> String {
-    let items = state
-        .lock()
-        .ok()
-        .map(|mut st| st.core.action_catalog_items())
-        .unwrap_or_default();
-    let projected: Vec<serde_json::Value> = items
-        .iter()
-        .map(|i| {
-            serde_json::json!({
-                "ref": format!("{}|{}|{}", i.provider_id, i.command_id, i.action_id),
-                "title": i.title,
-                "description": i.description,
-                "action_type": i.action_type,
-                "input_schema": i.input_schema,
-            })
-        })
-        .collect();
-    serde_json::to_string(&projected).unwrap_or_else(|_| "[]".into())
+    let (actions, workflows) = match state.lock() {
+        Ok(mut st) => {
+            let actions = st.core.action_catalog_items();
+            let workflows = std::fs::read_dir(crate::data_dir().join("workflows"))
+                .map(|rd| {
+                    rd.flatten()
+                        .filter(|e| {
+                            e.path().extension().and_then(|x| x.to_str()) == Some("json")
+                        })
+                        .filter_map(|e| {
+                            let raw = std::fs::read_to_string(e.path()).ok()?;
+                            let def: launcher_domain::WorkflowDefinition =
+                                serde_json::from_str(&raw).ok()?;
+                            Some(launcher_ai::tool_catalog::WorkflowToolSummary {
+                                definition_id: def.id,
+                                name: def.name,
+                                description: None,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            (actions, workflows)
+        }
+        Err(_) => (Vec::new(), Vec::new()),
+    };
+    let cat = launcher_ai::tool_catalog::ToolCatalog::project(&actions, &workflows);
+    let (rendered, _) = cat.render_json(&launcher_ai::tool_catalog::ProjectionLimits::default());
+    rendered
 }
 
 fn provider_from_config(cfg: &LlmConfig) -> OpenAiCompatibleProvider {
