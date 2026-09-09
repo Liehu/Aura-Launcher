@@ -13,6 +13,7 @@ pub mod agent_session;
 pub mod clarification;
 pub mod risk_classifier;
 pub mod intent;
+pub mod pipeline;
 pub mod structured_output;
 pub mod llm;
 pub mod planner;
