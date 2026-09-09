@@ -102,17 +102,48 @@ pub struct Resolution {
     pub approved_by_policy: bool,
     pub risk: SystemRisk,
     pub reason: String,
+    /// §34 origin propagation: carried into the audit trail.
+    pub origin: String,
 }
 
 #[derive(Debug, Default)]
 pub struct SystemResolver {
     /// Operations denied outright regardless of risk (policy v0.1).
     pub denied_operations: Vec<String>,
+    /// §32: per-origin policy (origin allow-list + risk ceilings).
+    pub policy: SystemPolicy,
+}
+
+/// §32 System Policy: per-origin rules evaluated BEFORE risk. Fail-closed —
+/// an origin absent from `allowed_origins` (when non-empty) is denied; a
+/// ceiling can only LOWER the max risk an origin may request.
+#[derive(Debug, Default)]
+pub struct SystemPolicy {
+    pub denied_operations: Vec<String>,
+    /// Origins permitted to resolve commands. Empty = all allowed.
+    pub allowed_origins: Vec<String>,
+    /// Max risk per origin (ceiling).
+    pub origin_risk_ceiling: Vec<(String, SystemRisk)>,
+}
+
+impl SystemPolicy {
+    fn origin_allowed(&self, origin: &str) -> bool {
+        self.allowed_origins.is_empty()
+            || self.allowed_origins.iter().any(|o| o == origin)
+    }
+
+    fn ceiling(&self, origin: &str) -> Option<SystemRisk> {
+        self.origin_risk_ceiling
+            .iter()
+            .find(|(o, _)| o == origin)
+            .map(|(_, r)| *r)
+    }
 }
 
 impl SystemResolver {
-    /// Resolve a validated command. Denies: invalid commands, denied
-    /// operations. Never executes anything.
+    /// Resolve a validated command. Denies: invalid commands, operations on
+    /// the deny list, disallowed origins, and requests above the origin's
+    /// risk ceiling. Never executes anything (§2: Resolver ≠ Authority).
     pub fn resolve(&self, cmd: &SystemCommand) -> Result<Resolution, String> {
         cmd.validate()?;
         if self.denied_operations.iter().any(|op| op == &cmd.operation) {
@@ -120,16 +151,41 @@ impl SystemResolver {
                 approved_by_policy: false,
                 risk: cmd.risk,
                 reason: format!("operation `{}` denied by policy", cmd.operation),
+                origin: cmd.origin.clone(),
             });
         }
+        // §32 origin propagation + policy evaluation
+        if !self.policy.origin_allowed(&cmd.origin) {
+            return Ok(Resolution {
+                approved_by_policy: false,
+                risk: cmd.risk,
+                reason: format!("origin `{}` not allowed to resolve commands", cmd.origin),
+                origin: cmd.origin.clone(),
+            });
+        }
+        if let Some(ceiling) = self.policy.ceiling(&cmd.origin) {
+            if cmd.risk > ceiling {
+                return Ok(Resolution {
+                    approved_by_policy: false,
+                    risk: cmd.risk,
+                    reason: format!(
+                        "risk {:?} exceeds origin ceiling {:?}",
+                        cmd.risk, ceiling
+                    ),
+                    origin: cmd.origin.clone(),
+                });
+            }
+        }
+        let reason = if cmd.risk.requires_confirmation() {
+            "requires confirmation before effect".into()
+        } else {
+            "allowed".into()
+        };
         Ok(Resolution {
             approved_by_policy: true,
             risk: cmd.risk,
-            reason: if cmd.risk.requires_confirmation() {
-                "requires confirmation before effect".into()
-            } else {
-                "allowed".into()
-            },
+            reason,
+            origin: cmd.origin.clone(),
         })
     }
 }
@@ -174,11 +230,38 @@ mod tests {
 
         let r = SystemResolver {
             denied_operations: vec!["format_disk".into()],
+            policy: SystemPolicy::default(),
         };
         let denied = r.resolve(&cmd("format_disk", SystemRisk::Privileged)).unwrap();
         assert!(!denied.approved_by_policy);
         // invalid command rejected outright
         assert!(r.resolve(&cmd("Format-Disk", SystemRisk::Info)).is_err());
+    }
+
+    /// P2.9 Batch 5: origin allow-list + risk ceiling policy (§32).
+    #[test]
+    fn origin_policy_and_risk_ceiling() {
+        let mut r = SystemResolver::default();
+        r.policy.allowed_origins = vec!["search".into()];
+        r.policy.origin_risk_ceiling = vec![("search".into(), SystemRisk::Reversible)];
+
+        // disallowed origin denied outright, origin propagated
+        let mut c = cmd("copy_path", SystemRisk::ReadOnly);
+        c.origin = "plugin".into();
+        let res = r.resolve(&c).unwrap();
+        assert!(!res.approved_by_policy, "disallowed origin denied");
+        assert_eq!(res.origin, "plugin");
+
+        // allowed origin within ceiling -> allowed, origin carried
+        let ok = r.resolve(&cmd("copy_path", SystemRisk::ReadOnly)).unwrap();
+        assert!(ok.approved_by_policy);
+        assert_eq!(ok.origin, "search");
+
+        // above the origin's risk ceiling -> denied
+        let mut heavy = cmd("delete_file", SystemRisk::Destructive);
+        heavy.origin = "search".into();
+        let res = r.resolve(&heavy).unwrap();
+        assert!(!res.approved_by_policy, "risk above ceiling denied");
     }
 
     /// §6/§35: destructive/privileged require confirmation.

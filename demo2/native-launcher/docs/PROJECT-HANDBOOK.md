@@ -384,7 +384,9 @@ P29-Batch3    Process/Window 能力分类与命令构建          ✅ Batch 3
               （fail-closed taxonomy，纯类型）—— 122 号
 P29-Batch4    Shell/URI/Notification/Power 分类与        ✅ Batch 4
               命令构建（fail-closed）—— 123 号
-P29-Batch5-6  Policy/Confirmation + Race/Security 收口   ⏳ 未开始
+P29-Batch5    System Policy（origin 白名单+风险上限）+    ✅ Batch 5
+              origin 传播 —— 124 号
+P29-Batch6    Race/Security/Soak/Fault 收口              ⏳ 未开始
               （Windows Adapter 统一后置接入）
 
 P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
