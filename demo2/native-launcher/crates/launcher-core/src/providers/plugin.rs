@@ -196,8 +196,16 @@ impl Provider for PluginProvider {
     }
 
     fn query(&mut self, q: &QueryContext) -> Vec<Command> {
-        // P2.2-D §75/§142: disabled/quarantined plugins produce no candidates
-        if self.disabled || self.quarantined {
+        // P2.2-D §75/§142: disabled/quarantined plugins produce no candidates.
+        // P3.1-B0 (live toggle): the registry is authoritative per query so a
+        // management-page disable applies IMMEDIATELY (no restart); the
+        // legacy cached flags remain the fallback for registry-less setups.
+        if let Some(reg) = &self.registry {
+            let st = reg.state(&self.manifest.id);
+            if st.quarantined || !st.enabled {
+                return Vec::new();
+            }
+        } else if self.disabled || self.quarantined {
             return Vec::new();
         }
         // DISCOVERY-TODO-001 closed: empty query = discovery request. Catalog

@@ -13,6 +13,7 @@
 
 mod agent_service;
 mod autostart;
+mod management;
 mod settings_ui;
 mod editor_surface;
 mod keyboard_walkthrough;
@@ -65,7 +66,11 @@ fn build_core(
     cfg: &AppConfig,
     db_dir: &std::path::Path,
     degraded_boot: bool,
-) -> anyhow::Result<(Core, launcher_core::providers::context::ContextHandle)> {
+) -> anyhow::Result<(
+    Core,
+    launcher_core::providers::context::ContextHandle,
+    std::sync::Arc<launcher_core::providers::plugin_registry::PluginRegistry>,
+)> {
     let mut core = Core::new();
 
     // context-aware provider (MVP2.1 Context Suggestions)
@@ -192,6 +197,8 @@ fn build_core(
     core.register(Box::new(launcher_core::providers::answers::AnswersProvider));
     // P3.0-F04: native settings surface
     core.register(Box::new(settings_ui::SettingsUiProvider));
+    // P3.1-B0: management window entry command
+    core.register(Box::new(management::ManagementCommandProvider));
 
     // the indexer connection doubles as the bounded history sink (WAL)
     core.set_history(indexer);
@@ -345,7 +352,7 @@ fn build_core(
             }
         }
     }
-    Ok((core, context_handle))
+    Ok((core, context_handle, registry))
 }
 
 /// Start-menu `.lnk` entries via the original demo2 AppProvider scan, merged
@@ -447,6 +454,8 @@ struct AppState {
     /// Single source of truth for executable results (INV-016): the UI only
     /// renders titles + command ids; id -> Command resolution lives here.
     current_results: Vec<Command>,
+    /// P3.1: persistent plugin registry (management page enable/disable).
+    plugins: std::sync::Arc<launcher_core::providers::plugin_registry::PluginRegistry>,
 }
 
 impl AppState {
@@ -1326,6 +1335,7 @@ fn execute_action_by_id(
                     || c.provider_id == "agent"
                     || c.provider_id == "editor"
                     || c.provider_id == "settings-ui"
+                    || c.provider_id == "management"
             })
             .map(|c| (c.provider_id.clone(), c.target.clone()))
             .unwrap_or_default()
@@ -1347,6 +1357,11 @@ fn execute_action_by_id(
                 Err(e) => set_status(ui2, format!("⚠ settings: {e}")),
             });
             let _ = state2;
+            return;
+        }
+        ("management", _) => {
+            // P3.1-B0: open the standalone management window
+            management::open(state);
             return;
         }
         ("editor", _) => {
@@ -1860,7 +1875,7 @@ fn main() -> anyhow::Result<()> {
             );
         }
     }
-    let (core, context_handle) = build_core(&cfg, &db_dir, degraded_boot)?;
+    let (core, context_handle, plugin_registry) = build_core(&cfg, &db_dir, degraded_boot)?;
 
     let state = Arc::new(Mutex::new(AppState {
         core,
@@ -1874,6 +1889,7 @@ fn main() -> anyhow::Result<()> {
         results_gen: 0,
         pending_confirmation: None,
         current_results: Vec::new(),
+        plugins: plugin_registry,
     }));
     let session = Arc::new(launcher_core::SearchSession::new());
     let visible = Arc::new(AtomicBool::new(false));

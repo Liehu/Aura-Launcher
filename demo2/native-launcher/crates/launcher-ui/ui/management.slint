@@ -1,0 +1,209 @@
+// ManagementWindow (P3.1-B0, ADR-0019): the standalone management surface —
+// General / Plugins / Workflows / About tabs. Pure projection: it renders
+// host-provided models and forwards user actions upward; it holds no logic.
+import { Theme } from "theme.slint";
+import { ThemedButton } from "primitives/themed-button.slint";
+
+export struct PluginEntry {
+    id: string,
+    state-text: string,
+    trust: string,
+    version: string,
+    enabled: bool,
+    quarantined: bool,
+}
+
+export struct WorkflowEntry {
+    name: string,
+    path: string,
+}
+
+export struct SettingRow {
+    label: string,
+    value: string,
+    action-id: string,
+}
+
+export component ManagementWindow inherits Window {
+    title: "Launcher Management";
+    width: 760px;
+    height: 520px;
+    background: Theme.bg-canvas;
+
+    in-out property <int> tab: 0;   // 0 general / 1 plugins / 2 workflows / 3 about
+    in property <[SettingRow]> general-rows;
+    in property <[PluginEntry]> plugins;
+    in property <[WorkflowEntry]> workflows;
+    in property <string> about-text;
+
+    callback tab-selected(int);
+    callback setting-applied(string /* action-id */);
+    callback plugin-toggled(string /* id */, bool /* enable */);
+    callback workflow-deleted(string /* path */);
+    callback closed();
+
+
+
+    VerticalLayout {
+        // ---- tab bar ----
+        HorizontalLayout {
+            height: 40px;
+            padding-left: Theme.spacing-md;
+            padding-right: Theme.spacing-md;
+            spacing: Theme.spacing-xs;
+            alignment: start;
+            for t in [
+                {i: 0, label: "General"},
+                {i: 1, label: "Plugins"},
+                {i: 2, label: "Workflows"},
+                {i: 3, label: "About"},
+            ]: Rectangle {
+                width: 96px;
+                background: root.tab == t.i ? Theme.bg-selected : transparent;
+                border-radius: Theme.radius-md;
+                animate background { duration: Theme.anim-ms * 2ms / 3; }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.tab = t.i;
+                        root.tab-selected(t.i);
+                    }
+                }
+                Text {
+                    text: t.label;
+                    color: root.tab == t.i ? Theme.text-primary : Theme.text-secondary;
+                    font-size: Theme.type-body;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: parent.width;
+                    height: parent.height;
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            ThemedButton {
+                text: "Close";
+                clicked => { root.closed(); }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.border-subtle; }
+
+        // ---- General ----
+        if root.tab == 0: VerticalLayout {
+            padding: Theme.spacing-lg;
+            spacing: Theme.spacing-xs;
+            for row in root.general-rows: Rectangle {
+                height: 44px;
+                background: Theme.bg-surface;
+                border-radius: Theme.radius-md;
+                HorizontalLayout {
+                    padding-left: Theme.spacing-md;
+                    padding-right: Theme.spacing-md;
+                    alignment: start;
+                    spacing: Theme.space-2;
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: row.label; color: Theme.text-primary; font-size: Theme.type-body; }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: row.value; color: Theme.text-secondary; font-size: Theme.type-secondary; }
+                    }
+                    ThemedButton {
+                        text: "Apply";
+                        width: 80px;
+                        clicked => { root.setting-applied(row.action-id); }
+                    }
+                }
+            }
+        }
+
+        // ---- Plugins ----
+        if root.tab == 1: VerticalLayout {
+            padding: Theme.spacing-lg;
+            spacing: Theme.spacing-xs;
+            if root.plugins.length == 0: Text {
+                text: "No plugins installed. Drop a plugin folder with plugin.json into the plugins directory.";
+                color: Theme.text-tertiary;
+                font-size: Theme.type-secondary;
+            }
+            for p in root.plugins: Rectangle {
+                height: 52px;
+                background: Theme.bg-surface;
+                border-radius: Theme.radius-md;
+                HorizontalLayout {
+                    padding-left: Theme.spacing-md;
+                    padding-right: Theme.spacing-md;
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: p.id + "  v" + p.version;
+                            color: Theme.text-primary;
+                            font-size: Theme.type-body;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: p.state-text + " · trust: " + p.trust;
+                            color: p.quarantined ? Theme.semantic-error : Theme.text-secondary;
+                            font-size: Theme.type-caption;
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    ThemedButton {
+                        text: p.quarantined ? "Quarantined" : (p.enabled ? "Disable" : "Enable");
+                        enabled: !p.quarantined;
+                        width: 110px;
+                        clicked => { root.plugin-toggled(p.id, !p.enabled); }
+                    }
+                }
+            }
+        }
+
+        // ---- Workflows ----
+        if root.tab == 2: VerticalLayout {
+            padding: Theme.spacing-lg;
+            spacing: Theme.spacing-xs;
+            if root.workflows.length == 0: Text {
+                text: "No workflows installed. JSON definitions live in the workflows directory.";
+                color: Theme.text-tertiary;
+                font-size: Theme.type-secondary;
+            }
+            for w in root.workflows: Rectangle {
+                height: 48px;
+                background: Theme.bg-surface;
+                border-radius: Theme.radius-md;
+                HorizontalLayout {
+                    padding-left: Theme.spacing-md;
+                    padding-right: Theme.spacing-md;
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: w.name; color: Theme.text-primary; font-size: Theme.type-body; overflow: elide; }
+                        Text { text: w.path; color: Theme.text-tertiary; font-size: Theme.type-caption; overflow: elide; }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    ThemedButton {
+                        text: "Delete";
+                        width: 90px;
+                        clicked => { root.workflow-deleted(w.path); }
+                    }
+                }
+            }
+            ThemedButton {
+                text: "Open Graph Editor (in the launcher popup)";
+            }
+        }
+
+        // ---- About ----
+        if root.tab == 3: VerticalLayout {
+            padding: Theme.spacing-lg;
+            spacing: Theme.spacing-md;
+            Text { text: "Native Launcher"; color: Theme.text-primary; font-size: Theme.type-title; }
+            Text { text: root.about-text; color: Theme.text-secondary; font-size: Theme.type-secondary; wrap: word-wrap; }
+        }
+    }
+}

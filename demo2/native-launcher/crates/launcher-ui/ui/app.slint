@@ -13,8 +13,14 @@ import { RuntimeMessage } from "runtime-message.slint";
 import { FailureDetail } from "failure-detail.slint";
 import { DiagnosticDetails } from "diagnostic-details.slint";
 import { EditorRowItem, GraphEditorSurface } from "graph-editor.slint";
+import {
+    ManagementWindow,
+    PluginEntry,
+    WorkflowEntry,
+    SettingRow,
+} from "management.slint";
 
-export { EditorRowItem }
+export { EditorRowItem, ManagementWindow, PluginEntry, WorkflowEntry, SettingRow }
 
 // re-export so the Rust side can set the resolution-adaptive ui-scale
 export { Theme }
