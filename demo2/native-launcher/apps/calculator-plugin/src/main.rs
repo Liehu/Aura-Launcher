@@ -106,6 +106,11 @@ fn format_result(v: f64) -> String {
 
 /// Contract query handler: arithmetic-looking input evaluates, anything else
 /// yields one help item so the query always returns something discoverable.
+///
+/// P3.2: a successful evaluation carries a `rich` payload (RICH-RESULT-v1)
+/// — the quick-calc row is unchanged, and the detail pane (Tab) renders the
+/// calculator page: strong result line, key/value breakdown, divider, and
+/// a usage table.
 fn handle_query(text: &str) -> serde_json::Value {
     let text = text.trim();
     let looks_like_math = text.chars().any(|c| c.is_ascii_digit())
@@ -117,11 +122,28 @@ fn handle_query(text: &str) -> serde_json::Value {
         let normalized = text.replace('x', "*").replace(',', ".");
         match evaluate(&normalized) {
             Ok(v) => {
+                let kind = if v == v.trunc() { "integer" } else { "decimal" };
                 return serde_json::json!([
                     {
                         "title": format!("= {}", format_result(v)),
                         "subtitle": text,
-                        "actions": ["copy"]
+                        "actions": ["copy"],
+                        "rich": { "blocks": [
+                            { "type": "text", "text": format!("= {}", format_result(v)), "emphasis": "strong" },
+                            { "type": "key_value", "rows": [
+                                { "key": "expression", "value": normalized },
+                                { "key": "result kind", "value": kind },
+                                { "key": "copy", "value": "press Enter" }
+                            ]},
+                            { "type": "divider" },
+                            { "type": "table",
+                              "headers": ["supported", "ops"],
+                              "rows": [
+                                ["basic", "+ - * / % ^"],
+                                ["grouping", "( )"],
+                                ["aliases", "x = *"]
+                              ] }
+                        ] }
                     }
                 ]);
             }
@@ -173,9 +195,15 @@ mod tests {
     fn query_handler_returns_contract_items() {
         let v = handle_query("12+34*2");
         assert_eq!(v[0]["title"], "= 80");
+        // P3.2: quick-calc row carries the calculator page as a rich payload
+        let rich = &v[0]["rich"]["blocks"];
+        assert!(rich.is_array() && !rich.as_array().unwrap().is_empty());
+        assert!(serde_json::to_string(rich).unwrap().contains("expression"));
 
         let v = handle_query("hello");
         assert!(v[0]["title"].as_str().unwrap().contains("Calculator"));
+        // non-math queries have no rich payload
+        assert!(v[0].get("rich").is_none());
 
         let v = handle_query("1/0");
         assert!(v[0]["title"].as_str().unwrap().contains("Cannot"));

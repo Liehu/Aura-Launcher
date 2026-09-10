@@ -31,8 +31,13 @@
 - `cargo test --workspace`：**916 passed / 0 failed**（910 → 916，+6）
 - `cargo build --workspace`：零警告；`check_topology.py`：ok
 
+## 追加：calculator 插件改写（169 号）
+
+calculator-plugin 已按 RICH-RESULT-v1 改写：快速计算行保留原样，rich
+payload 携带计算器页面（强结果行 + KeyValue 分解 + 使用表格）；单元测试
+断言 rich 块存在且非数学查询无 payload。PLUGIN-DEV-GUIDE §5.1.1 同步
+富结果示例。
+
 ## 待续（P3.2-B2）
 
-MCP `content` 数组映射表 + 管理窗口 General 页新增"富结果"说明 +
-`docs/PLUGIN-DEV-GUIDE.md` §5.1 增补 rich 输出示例（当前已标注 DRAFT
-转正状态，需同步实现示例）。
+MCP `content` 数组映射表。

@@ -144,8 +144,25 @@ Discovered(<plugins>/*/plugin.json)
 - 动作描述对象的 `requires` 声明所需 capability；超出
   `manifest.capabilities` 的请求被拒（CapabilityDenied，见 §6）。
 
-**没有的**：任意 HTML/WebView、富文本 block、表单输入。富结果协议在
-`docs/contracts/RICH-RESULT-draft.md`（DRAFT，未实现，勿依赖）。
+### 5.1.1 富结果（P3.2，已实现）
+
+给条目加可选 `rich` 字段即可——列表行不变，选中后的详情面板渲染富内容：
+
+```json
+{ "title": "= 80", "actions": ["copy"],
+  "rich": { "blocks": [
+    { "type": "text", "text": "= 80", "emphasis": "strong" },
+    { "type": "key_value", "rows": [{"key": "expression", "value": "12+34*2"}] },
+    { "type": "divider" },
+    { "type": "table", "headers": ["supported", "ops"], "rows": [["basic", "+ - * / % ^"]] }
+  ] } }
+```
+
+规则（RICH-RESULT-v1 契约）：未知 block 跳过；payload 非法只丢 rich
+部分、条目照常返回；≤64 块 / 表 ≤200 行 / ≤256K 字符；intake 时逐串
+脱敏。完整示例：`apps/calculator-plugin`（快速计算行 + 计算器页面）。
+
+**没有的**：任意 HTML/WebView、Image block（后置 P4）、交互表格。
 
 ### 5.2 插件自开窗口（P3.1 起支持，实验性）
 
