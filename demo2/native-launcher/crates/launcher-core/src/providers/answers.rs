@@ -152,6 +152,36 @@ fn query_answers(q: &QueryContext) -> Vec<Command> {
     };
     let expr_text: String = body.chars().filter(|c| !c.is_whitespace()).collect();
     let result_text = format_number(result);
+    // P3.2: a proper calculator page for the detail pane (strong result
+    // line + key/value breakdown) instead of raw id diagnostics
+    launcher_domain::rich::store(
+        "answer:calc",
+        launcher_domain::rich::RichResult {
+            blocks: vec![
+                launcher_domain::rich::RichBlock::Text {
+                    text: format!("= {result_text}"),
+                    emphasis: launcher_domain::rich::Emphasis::Strong,
+                },
+                launcher_domain::rich::RichBlock::KeyValue {
+                    rows: vec![
+                        launcher_domain::rich::KeyValueRow {
+                            key: "expression".into(),
+                            value: expr_text.clone(),
+                        },
+                        launcher_domain::rich::KeyValueRow {
+                            key: "result".into(),
+                            value: result_text.clone(),
+                        },
+                    ],
+                },
+                launcher_domain::rich::RichBlock::Divider,
+                launcher_domain::rich::RichBlock::Text {
+                    text: "Enter copies the result".into(),
+                    emphasis: launcher_domain::rich::Emphasis::None,
+                },
+            ],
+        },
+    );
     vec![Command {
         id: "answer:calc".into(),
         title: format!("{expr_text} = {result_text}"),

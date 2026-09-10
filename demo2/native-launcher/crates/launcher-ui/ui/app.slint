@@ -327,7 +327,7 @@ export component AppWindow inherits Window {
         // Main Mode: ResultList (empty vs rows presentation); height follows
         // the visible-row count, extra rows scroll inside the Flickable
         ResultList {
-            visible: root.show-results;
+            visible: root.show-results && !root.detail-visible;
             results: root.results;
             selected-index: root.selected-index;
             visible-rows: root.visible-rows;
@@ -414,6 +414,8 @@ export component AppWindow inherits Window {
                 color: Theme.text-tertiary;
                 font-size: Theme.type-caption;
                 overflow: elide;
+                // P3.2: developer diagnostics hide when rich content renders
+                visible: root.detail-lines.length == 0;
             }
             for line in root.detail-lines: Text {
                 text: line;
