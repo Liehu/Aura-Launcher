@@ -18,6 +18,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// loop itself.
 pub trait TurnExecutor {
     fn execute(&mut self, action_ref: &str, input: &serde_json::Value) -> Result<serde_json::Value, String>;
+
+    /// P210-G09: for a FAILED call, what is known about the effect?
+    /// Default `Failed` (effect did not land — safe to retry). Hosts whose
+    /// executors can time out override this to report `Unknown` — an
+    /// Unknown step is NEVER blindly re-executed (recovery route instead).
+    fn effect_state(
+        &self,
+        _action_ref: &str,
+    ) -> launcher_domain::execution_semantics::EffectState {
+        launcher_domain::execution_semantics::EffectState::Failed
+    }
 }
 
 /// D02 host binding (§23 `request_approval_if_required`): when a plan needs
@@ -189,7 +200,7 @@ pub fn run_agent(
                 let mut step_status: std::collections::HashMap<String, launcher_domain::execution_semantics::StepStatus> =
                     std::collections::HashMap::new();
                 loop {
-                    let mut failure: Option<(String, String)> = None;
+                    let mut failure: Option<(String, String, launcher_domain::execution_semantics::EffectState)> = None;
                     for step in &proposal.plan {
                         if cancel.load(Ordering::SeqCst) {
                             let _ = session.transition(AgentRunStatus::Cancelled, false);
@@ -197,10 +208,16 @@ pub fn run_agent(
                             return LoopStop::Cancelled;
                         }
                         // H3: immutable success — a succeeded effect is not
-                        // repeated, whatever the (re)plan says.
-                        if step_status.get(&step.step_id)
-                            == Some(&launcher_domain::execution_semantics::StepStatus::Succeeded)
-                        {
+                        // repeated, whatever the (re)plan says. Unknown
+                        // (unsettled effect) likewise: recovery route, never
+                        // a blind re-run (P210-G09).
+                        if matches!(
+                            step_status.get(&step.step_id),
+                            Some(
+                                launcher_domain::execution_semantics::StepStatus::Succeeded
+                                    | launcher_domain::execution_semantics::StepStatus::Unknown
+                            )
+                        ) {
                             continue;
                         }
                         telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepStarted, &step.action_ref);
@@ -214,12 +231,17 @@ pub fn run_agent(
                                 telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepCompleted, &step.step_id);
                             }
                             Err(e) => {
-                                step_status.insert(
-                                    step.step_id.clone(),
-                                    launcher_domain::execution_semantics::StepStatus::Failed,
-                                );
+                                let effect_state = exec.effect_state(&step.action_ref);
+                                let status = if effect_state
+                                    == launcher_domain::execution_semantics::EffectState::Unknown
+                                {
+                                    launcher_domain::execution_semantics::StepStatus::Unknown
+                                } else {
+                                    launcher_domain::execution_semantics::StepStatus::Failed
+                                };
+                                step_status.insert(step.step_id.clone(), status);
                                 telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepFailed, &step.step_id);
-                                failure = Some((step.step_id.clone(), e));
+                                failure = Some((step.step_id.clone(), e, effect_state));
                                 break;
                             }
                         }
@@ -230,7 +252,20 @@ pub fn run_agent(
                             telemetry.finish(t0, LoopStop::Completed);
                             return LoopStop::Completed;
                         }
-                        Some((step_id, e)) => {
+                        Some((step_id, e, effect_state)) => {
+                            // P210-G09: an UNSETTLED effect must not trigger
+                            // an automatic replan/retry — recovery route.
+                            if effect_state
+                                == launcher_domain::execution_semantics::EffectState::Unknown
+                            {
+                                let _ = session.transition(AgentRunStatus::Failed, false);
+                                let stop = LoopStop::Failed {
+                                    step_id,
+                                    error: format!("unsettled effect (recovery required): {e}"),
+                                };
+                                telemetry.finish(t0, stop.clone());
+                                return stop;
+                            }
                             // §25: exactly one re-plan attempt (v1 policy)
                             if replanned || attempt > 0 {
                                 let _ = session.transition(AgentRunStatus::Failed, false);

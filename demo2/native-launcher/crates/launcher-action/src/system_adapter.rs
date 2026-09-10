@@ -121,6 +121,94 @@ fn window_target(cmd: &SystemCommand) -> Result<(isize, Option<u32>), ActionErro
 
 // ---- uri ----------------------------------------------------------------
 
+/// P210-G09 Runtime Recovery Probe: determine what ACTUALLY happened to an
+/// unsettled effect (the Queryable route of `recovery_route`). Only
+/// operations with an observable OS state are queryable — everything else
+/// reports `Unknown` and must go through policy retry / explicit recovery.
+///
+/// Semantics per capability (fail-closed):
+/// - `Process kill`: target process gone AND a creation identity was
+///   recorded → `Completed` (the identified process is dead); alive with
+///   matching identity → `NotStarted`; alive with different identity or no
+///   identity recorded → `Unknown`;
+/// - `Window close`: HWND gone (with owning pid recorded) → `Completed`;
+///   alive with matching owner → `NotStarted`; else `Unknown`;
+/// - power / uri / everything else → `Unknown`.
+#[cfg(windows)]
+pub fn probe_effect(cmd: &SystemCommand) -> launcher_domain::execution_semantics::EffectState {
+    use launcher_domain::execution_semantics::EffectState;
+    match (&cmd.target, cmd.operation.as_str()) {
+        (SystemTarget::Process { pid, creation_time_ft: Some(ft), .. }, "kill" | "terminate") => {
+            match process_creation_time_ft(*pid) {
+                // the identified process is gone: the kill landed
+                None => EffectState::Completed,
+                // alive and it IS the same process: effect did not land
+                Some(actual) if actual == *ft => EffectState::NotStarted,
+                // alive but it is a DIFFERENT process (pid reused):
+                // unknowable whether "the target" is dead
+                Some(_) => EffectState::Unknown,
+            }
+        }
+        (SystemTarget::Window { hwnd, pid: Some(owner), .. }, "close") => {
+            use windows::Win32::Foundation::HWND;
+            use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow};
+            let hwnd_raw = *hwnd;
+            if hwnd_raw == 0 || hwnd_raw > isize::MAX as u64 {
+                return EffectState::Unknown;
+            }
+            unsafe {
+                let h = HWND(hwnd_raw as *mut _);
+                if !IsWindow(h).as_bool() {
+                    // window gone: the WM_CLOSE landed (owner recorded, so
+                    // this is not just a fabricated handle we never saw)
+                    EffectState::Completed
+                } else {
+                    let mut pid: u32 = 0;
+                    GetWindowThreadProcessId(h, Some(&mut pid));
+                    if pid == *owner {
+                        EffectState::NotStarted
+                    } else {
+                        EffectState::Unknown
+                    }
+                }
+            }
+        }
+        _ => EffectState::Unknown,
+    }
+}
+
+/// Non-Windows: no observable OS state — always Unknown.
+#[cfg(not(windows))]
+pub fn probe_effect(_cmd: &SystemCommand) -> launcher_domain::execution_semantics::EffectState {
+    launcher_domain::execution_semantics::EffectState::Unknown
+}
+
+/// The current creation time (FILETIME 100ns) of a live process, or None.
+/// Identity-side helper for hosts recording resolve-time targets and for
+/// the recovery probe tests.
+#[cfg(windows)]
+#[doc(hidden)]
+pub fn process_creation_time_ft(pid: u32) -> Option<i64> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut creation = Default::default();
+        let mut exit = Default::default();
+        let mut kernel = Default::default();
+        let mut user = Default::default();
+        let ok = GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user);
+        let _ = CloseHandle(handle);
+        ok.ok()?;
+        Some(
+            (u64::from(creation.dwHighDateTime) << 32) as i64
+                | i64::from(creation.dwLowDateTime),
+        )
+    }
+}
+
 /// ShellExecute an `open` on the scheme URI. The frozen target carries the
 /// scheme only; it is strictly validated before it may reach the shell.
 fn open_uri(cmd: &SystemCommand) -> Result<Effect, ActionError> {
@@ -470,5 +558,36 @@ mod p210_tests {
         let kill = process_command(1, "x", "kill", "test").unwrap();
         let auth = authorize_system_command(&kill, true).unwrap();
         assert_move_only(auth); // moves; a Clone type would allow dup minting
+    }
+
+    /// P210-G09: the recovery probe distinguishes NotStarted (retryable) /
+    /// Completed (effect landed) / Unknown (unsettled) for kill effects
+    /// against a LIVE target (the current process).
+    #[test]
+    fn recovery_probe_reports_effect_state() {
+        use launcher_domain::execution_semantics::EffectState;
+        let live = std::process::id();
+        let ft = process_creation_time_ft(live).expect("self is alive");
+        // same identity: the kill did not land yet
+        let cmd =
+            process_command_with_identity(live, "self", Some(ft), "kill", "test").unwrap();
+        assert_eq!(probe_effect(&cmd), EffectState::NotStarted);
+        // different identity: pid reused — unknowable
+        let cmd = process_command_with_identity(live, "self", Some(ft ^ 1), "kill", "test")
+            .unwrap();
+        assert_eq!(probe_effect(&cmd), EffectState::Unknown);
+        // a genuinely dead pid WITH recorded identity: the kill landed
+        let dead = process_command_with_identity(0x7FFF_0000, "gone", Some(42), "kill", "test")
+            .unwrap();
+        assert_eq!(probe_effect(&dead), EffectState::Completed);
+        // non-queryable capability: Unknown
+        let lock_cmd = launcher_domain::system::SystemCommand {
+            capability: launcher_domain::system::SystemCapability::Power,
+            operation: "lock".into(),
+            target: launcher_domain::system::SystemTarget::System { setting: "s".into() },
+            risk: launcher_domain::system::SystemRisk::Reversible,
+            origin: "test".into(),
+        };
+        assert_eq!(probe_effect(&lock_cmd), EffectState::Unknown);
     }
 }
