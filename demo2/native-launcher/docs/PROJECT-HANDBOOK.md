@@ -2,7 +2,10 @@
 
 > **本文件用途**：为新的 Agent 会话/开发者提供项目全景、冻结契约索引、执行边界、测试闸门与剩余工作。读完本文件即可安全开工；各主题细节见对应链接文档。
 >
-> **更新**：2026-09-09（**P2.8 Batch 5**，见 `docs/history/115-p28-batch5-repository.md`；权威逐条基线 `demo2/files2/97-launcher-1.0-final-audit.md`）。基线：748 tests 全绿 / zero warnings / topology 17 crates + 9 apps / S0=S1=S2=0 / Release Gate G01~G14 PASS / 1.0 manifest=released（签名待补）/ hotkey P50 307µs·P95 19.7ms / 10k UI soak PASS。
+> **更新**：2026-09-10（**P2.10 收口**，见 `docs/history/159-p210-closure.md`）。
+> 当前基线：**887 tests 全绿 / zero warnings / topology 17 crates + 9 apps**；
+> 阶段状态唯一真相：`docs/phase/status.md`（P2.4–P2.10 全 ACCEPTED，外部
+> 证书项 BLOCKED-EXTERNAL）；运行语义契约：`docs/contracts/`。
 
 ---
 
@@ -65,6 +68,9 @@ Producer (UI/Plugin/Workflow/AI/MCP)
 | `UI-CONTRACT-v0.1.md` | FROZEN v0.1（canonical） | 3 Mode（Main/Action/Workflow）+ Confirmation 子状态 + 状态迁移矩阵 + 50 条 UI-ACC |
 | `VISUAL-DESIGN-SPEC-v0.1`（外部稿，评审见 `VISUAL-DESIGN-SPEC-REVIEW.md`） | FROZEN v0.1 | Design Tokens（theme.slint 单一注入点）/ 640×420 基线 / Motion ≤200ms / 禁 Dashboard 化 |
 | `UI-CONTRACT-COMPARISON.md` | 存档 | 两版本合并决议（D1：单击=选中并执行 primary） |
+| `docs/contracts/EFFECT-AUTHORITY.md`（P210） | FROZEN | 权威链 Producer→Resolver→Policy→Approval→Engine→AuthorizedEffect→Adapter；adapter 无 authority 参数 |
+| `docs/contracts/EXECUTION-SEMANTICS-v1.md`（P210） | FROZEN | CommandResult/EffectState/StepStatus/Retry 矩阵/Recovery Protocol 统一词汇 |
+| `docs/contracts/STATE-GENERATION.md`（P210） | FROZEN | 六类 Lifecycle State + Generation 注册表（失败不递增；Generation ≠ Identity） |
 
 **依赖方向铁律**：`UI-CONTRACT 定义行为` → `VISUAL-DESIGN-SPEC 定义外观` → `Slint 渲染`。视觉规范不得反向改变行为契约。
 
@@ -91,7 +97,9 @@ Producer (UI/Plugin/Workflow/AI/MCP)
 
 # 5. Invariants（完整表见 `docs/INVARIANTS.md`）
 
-关键分组（INV-001~069 全表见 INVARIANTS.md，此处为新会话最易踩的）：
+关键分组（INV-001~069 + P210 节 INV-EFFECT-101~106 / INV-IDENTITY-101~102 /
+INV-RETRY-101 / INV-RECOVERY-101 / INV-AGENT-101 / INV-STATE-101 全表见
+INVARIANTS.md，此处为新会话最易踩的）：
 
 - **执行边界**：INV-004（Effect 只经 ActionEngine）、INV-026/033（raw ActionDescriptor 永不触达 Engine；Engine 只收 ResolvedAction）、INV-037（ActionPanel/UI 不直接执行 Effect）。
 - **身份**：INV-016/028/029/035（UI 与持久化一律 stable id：command_id/action_id/workflow_run_id；provider_id Host 权威；禁 index/文本匹配）。
@@ -142,282 +150,23 @@ LAUNCHER_SNAPSHOT_DIR=<dir> ./target/debug/launcher-app
 - MCP Provider/transport/fixture：`crates/launcher-mcp`（13 单测）+ `apps/example-mcp-server/tests/mcp_provider_e2e.rs`（6 项真实 stdio E2E）
 - Plugin SDK 跨语言：`crates/launcher-plugin-host/tests/python_sdk_e2e.rs`（`LAUNCHER_PYTHON` 可指定解释器）
 
-# 7. 里程碑进度
+# 7. 里程碑进度（索引）
 
-> 2026-09-07 修订：按 review 82 §22-23 采用 **DESIGNED → IMPLEMENTED → INTEGRATED → ACCEPTED** 四态。下表只列**最后状态**；详细分批记录见 `docs/history/`（20 份，至 89 号）。
+> P2.10-011 文档对齐：阶段状态的**唯一真相**是 `docs/phase/status.md`
+> （四态词汇：ACCEPTED/IMPLEMENTED/DEFERRED/BLOCKED-EXTERNAL，含每个
+> 后置项与理由）；逐批次事实证据在 `docs/history/`（63→159 号，不可
+> 回写）。本节只保留里程碑 → 权威链接的索引，不再承载状态事实。
 
-```text
-── 基础设施 ────────────────────────────────────────────
-MVP1~4.4   P0~P1 全部六批                              ✅ ACCEPTED
-           (Core/Search/Plugin/MCP/Workflow/AI/Runtime/
-            ProtocolSession/Coordinator/Auth/LLM)
-
-── P2.1 Search Foundation ─────────────────────────────
-P2.1-A     Semantic Identity Dedup + path identity     ✅ ACCEPTED
-           (rank_with_boost 二段去重 + 语义身份 + Path Identity)
-P2.1-B     Incremental Index Engine v0.1               ✅ ACCEPTED
-           (RDC watcher + bounded queue + coalescer +
-            coordinator + B10 E2E；宿主接线 watch_enabled)
-P2.1-C     SearchCoordinator                           ⏳ Batch 3
-           (语义去重切片已落地；Contract v2 主体挂账)
-P2.1-D     Application Discovery 2.0                   ⏳ Batch 4
-           (PackageManager+Portable+exe归并已落地；
-            持久Catalog/增量reconcile挂账=P2.1-D.1)
-P2.1-E     Icon Cache + Performance Baseline           ⏳ Batch 5
-           (Icon后端E1-E4+debug基线已落地；E5 UI接线挂账)
-
-── P2.2 Product Capability ────────────────────────────
-P2.2-A     Favorites / Pinning                         ✅ IMPLEMENTED
-           (SQLite + 语义身份 + Ctrl+D + boost + 事务)
-P2.2-B     Query Cache                                 ✅ IMPLEMENTED
-           (generation key 全字段 + LRU + TTL + stale拒)
-P2.2-C     Context-aware Ranking                       ✅ IMPLEMENTED (v0.1)
-           (FolderProximity + foreground + 语义代际失效)
-P2.2-D     Plugin Ecosystem Management                 ⏳ Safety Slice ✅
-           (quarantine持久化+disabled无候选已落地；
-            Registry SQL/Package/Capability UI挂账)
-P2.2-E     Installer / Upgrade / Recovery              ⏳ Bootstrap ✅
-           (schema_version/启动健康/崩溃环/handoff/
-            package.py已落地；MSIX/UpgradeCoordinator挂账)
-
-── P2.2-F Cross-Batch Contract Closure ────────────────
-           CacheKey全字段 / Context代际闭环 / lookup顺序 /
-           subtitle回填 / State Generation Matrix       ✅ ACCEPTED
-
-── P1 收口 + P2.1-D.1 + P2.2-D/E 补充 ─────────────────
-P1 收口    Candidate Merge + Icon UI + Release基线      ✅
-           (actions并集 + IconService UI接线 + VR重生成 +
-            Release基线 app p95 7µs / file p95 23µs / 1.8MB)
-P2.1-D.1   Persistent Application Catalog              ✅
-           (catalog.db reconcile + generation commit+1)
-P2.2-D 补   Plugin Registry 持久化                     ✅
-           (plugins.db enabled/quarantined/failures)
-P2.2-E 补   崩溃环 + handoff + 卸载策略                 ✅
-           (3次失败→DEGRADED BOOT + update_handoff消费)
-
-── P2.3 Release Closure ───────────────────────────────  ⚠️ PARTIAL
-P2.3-A     Architecture & Contract Baseline            ✅ ACCEPTED
-           (LAYER_GUARDS + 30+不变量×锚点矩阵 + 权威链冻结)
-P2.3-B     Product E2E                                 ⚠️ Core Slice
-           (golden path搜索/排名/历史 + workflow目录 + 真实 Effect E2E ✅
-            (real_effect_e2e: search→rank→execute→history→re-rank +
-             真实FileProvider索引) ；GUI E2E / 键盘导航 ⏳)
-P2.3-C     Reliability / Recovery                      ✅ ACCEPTED
-           (C6/C7 持久层损坏恢复 + startup state machine ✅；
-            C3 真实多进程 crash soak→quarantine持久化 ✅；
-            C4 MCP recovery 矩阵(cash/breach 混合+循环 soak) ✅；
-            C11 资源 soak(RSS/handle/thread 有界,env 可扩 30min/4h) ✅；
-            C12 Recovery Golden Suite(20 场景×5 层) ✅；
-            修复:catalog.db/plugins.db 截断损坏打开时自愈)
-P2.3-D     Performance/Memory Closure（D1–D7）          ✅ ACCEPTED
-           (D2 真实进程启动 ≈152ms≤500ms + D3 search p95 7/24µs + D4
-            idle RSS 26.4MB≤50MB + D5 双 soak(popup 1000x/memory trend)
-            + D6 thresholds.json 4 预算全字段 + D7 G10 全字段判定)
-P2.3-E     Security/Trust Boundary Closure                    ✅
-           (75 adversarial tests S0=S1=S2=0 + query cap 512 + LAYER_GUARDS)
-P2.3-F     UI/Interaction QA                           ✅ ACCEPTED
-           (selection/supersession/favorite 逻辑切片 ✅；
-            键盘 walkthrough（真实 Slint 按键管线：query→↓/↑→Enter→Esc
-            报告 pass）✅；DPI walkthrough（125%/150% ScaleFactorChanged
-            注入，apply_ui_scale 公式断言 + 窗口存活）✅；
-            popup 1000x soak ✅（P2.3-D5）；真实显示器 DPI 矩阵 = 手动清单)
-P2.3-G     Installer/Upgrade/Migration QA              ⚠️ Foundation
-           (package.py + uninstall.ps1 + 数据保留已有；MSIX/签名⏳)
-P2.3-H     Release Engineering & CI                    ✅ ACCEPTED
-           (G01~G12 统一 Pipeline；G08 = VR + GUI QA walkthroughs；
-            G10 = 全字段性能预算；G12 = Evidence/Manifest/Artifact
-            Closure（dist zip + perf baseline SHA-256 封存）)
-P2.3-I     Release Candidate                           ◐ RC1
-           ── 已达成 ──
-           · Real Effect E2E                              ✅ closed
-           · P2.3-C/D/F/H 全部收口                          ✅
-           · Final Release Gate = G01~G12                 ✅ 12/12 PASS
-           · RC artifact 冻结：dist/NativeLauncher-1.0.0-win64.zip +
-             EVIDENCE.json（SHA-256）+ RELEASE-MANIFEST（status=
-             release-candidate）
-           ── RC1 挂账（2026-09-08 收口，见 docs/history/89-rc1-closure.md）──
-           · Plugin Registry 安全选择恢复（backup/restore）      ✅
-             （plugins.db.bak 随写随备 + 损坏 quarantine+恢复；
-              C12 golden 场景按 backup-first 策略更新）
-           · MSIX/签名/UpgradeCoordinator                        ◐
-             （make_msix.py 无签名打包 ✅ + update_handoff
-              写/读/consume-once 协议 + 启动消费接线 ✅；
-              证书签名 + 完整升级状态机 = 外部步骤/后续）
-           · 30min/4h 资源长剖面                                  ✅
-             （1800s 档已跑并入档 benchmarks/c11-soak-30min-run.log；
-              4h 档保留为 nightly 项）
-           ── Non-blocking (2.x) ──
-           · Provider Contract v2 / Catalog incremental
-           · Agent product integration / Durable Workflow / Marketplace
-
-── P2.4 Foundation Closure（spec: files2/01-P2.4-DESIGN-SPEC.md）────
-P2.4-0     Baseline/Documentation Closure               ✅ (= GA Closure, 90号)
-P2.4-A     Application Catalog 2.0                      ✅ Batch 1+2
-           (A01 身份五级precedence + A02 schema v2迁移 +
-            A03 observations reconcile + A04 lifecycle +
-            A05 权威读路径/generation接线 + A06 恢复
-            conformance —— 见 91/92 号)
-P2.4-C     Plugin Control Plane 2.0                     ◐
-           (C02 trust 阶梯 + C03 capability 决策持久化 ✅
-            91号；C04 quarantine/ C05 backup-restore ✅ 89号；
-            C01 lifecycle 整合 / C06 诊断 ⏳)
-P2.4-B     File Index Maintenance 2.0                   ✅ Batch 2
-           (B01/B04 root 状态机 Unavailable→重现恢复 +
-            B02 watcher 重注册有界退避 + B05 健康模型
-            全字段 + B06 soak —— 见 92 号；B03 DirtyRoot
-            P2.1-B 已有)
-P2.4-C     Plugin Control Plane 2.0                     ✅
-           (C01 installation revision + C02 trust 阶梯 +
-            C03 capability 决策 + C04 quarantine +
-            C05 backup-restore + C06 结构化诊断
-            —— 89/91/93 号)
-P2.4-D     Plugin SDK / CLI                             ✅ Batch 3
-           (launcher-plugin 新 app：init/validate/
-            package/install/uninstall/run/inspect，
-            staged install fail-closed —— 93 号)
-
-── P2.5 Search Intelligence（spec: files2/101-p2.5-0.1.md）──────────
-P25-000    Baseline Closure                             ✅ (= P2.4 完成)
-P25-001    Search Contract v2                           ✅ Batch 1
-           (SearchRequestV2/Intent 8类/Filter/Strategy/
-            ResultState 冻结 + authority-free 断言 —— 95号)
-P25-A01-A03 Query Normalizer v2 + Intent Detector +
-            Explicit Filters（纯函数/确定性/无 I/O）      ✅ Batch 1
-P25-B01-B04  SearchCoordinator（骨架/有界 fan-out/      ✅ Batch 2
-             panic 隔离/取消守卫）+ B06 路由 v0.1
-             （Core::search 保留 sequential 兼容模式，
-              默认切换等 E 线基准）—— 96 号
-P25-B05     Partial Result Contract                     ✅ Batch 2
-P25-C01/C05 FTS5 检索层 + LIKE 合并回退（files_fts      ✅ Batch 3
-             增量同步/自愈重建；catalog app_fts；
-             path-fragment 零回归）—— 97 号
-P25-C06     Content 扩展点（显式禁用）                  ✅ Batch 3
-P25-C02     Application FTS                             ✅ Batch 3
-P25-D02/D03   Ranking v2：权重集中+版本化配置回退 +      ✅ Batch 4
-              ScoreParts 同源解释 + D05 质量语料
-              （默认值=旧行为，零排序回归）—— 98 号
-P25-D04/D06   推迟说明见 98 号（merge provenance 归入     ⏳ 归档
-              Candidate 模型；诊断随 E 线）
-P25-E         Stress/Race/Recovery（E03/E04/E05；         ✅ Batch 5
-              E01/E02/E06 由 G10/B02/GA 证据覆盖）—— 99 号
-P25-F         G14 "P2.5 conformance" 入 release_gate，    ✅ Batch 5
-              G01~G14 全 PASS —— 99 号
-P25-A04/C04   Pinyin                                     ⏸ 唯一尾项（独立批次）
-
-── P2.6 Workflow 2.0（spec: files2/P2.6 开发设计规范）───────────────
-P26-A01/A02   Graph Domain Model + DAG Validator         ✅ Batch 1
-              （DAG-only 政策；11 测试）—— 100 号
-P26-A03/A04/A05 Join(WaitAll+skip 穿透)/条件引擎/       ✅ Batch 2
-              VariableStore（缺失变量=确定性 false）—— 106 号
-P26-A06       Graph Contract Kit（21 测试四组）          ✅ Batch 3
-P26-B01       Durable Run Store（SQLite checkpoint/      ✅ Batch 3
-              恢复扫描/损坏重建）—— 107 号
-P26-B02/B03   Durable Scheduler（执行循环 + 每节点       ✅ Batch 4
-              checkpoint + 恢复不重执行 + 停滞诊断）
-P26-B05/B06   失败策略 v1 / 暂停恢复                     ✅ Batch 4
-P26-C01–C04   Human Approval（契约/SQLite 存储/pending   ✅ Batch 5
-              面/执行安全：approve 执行、reject 跳过、
-              restart-safe）—— 109 号
-P26-B04       Parallel 执行                              ⏳ 未开始
-P26-C05     审批过期/取消（fail-closed）                ✅ Batch 6
-P26-D01/D02 Trigger 契约 + 持久 FIFO 队列               ✅ Batch 6
-P26-B04/D03-D06/E/F/G parallel/触发源接线/Editor/收口  ⏳ 未开始
-P26-B         Durable Runtime（store/checkpoint/         ⏳ 未开始
-              scheduler/parallel/retry/recovery）
-P26-C         Human Approval（契约/UI/安全）             ⏳ 未开始
-P26-D         Trigger Framework + Queue                  ⏳ 未开始
-P26-E         Visual Editor（7 任务）                    ⏳ 未开始
-P26-F/G       QA + Release                               ✅ 137 号（G17 入 gate）
-
-── P2.7 AI / Agent Productization（spec: files2/P2.7 开发设计规范）──
-P27-001       AI Contract v1（Intent/PlanStep/           ✅ Batch 1
-              AgentProposal/RiskLevel L0-L4，
-              fail-closed 校验，authority-free）—— 101 号
-P27-A03       Intent/Entity 确定性规则解析               ✅ Batch 2
-              （无 LLM/网络；LLM 可后替换同契约）—— 117 号
-P27-A05       结构化输出校验器（LLM 输出唯一通道         ✅ Batch 3
-              fail-closed）—— 118 号
-P27-A06       Clarification Engine（确定性澄清决策）     ✅ Batch 4
-P27-A04/A02   Prompt Builder + 注入清洗 + 上下文预算     ✅ Batch 5
-              （E06-lite 第一二层，G05 批推进纵深）——120 号
-P27-C01/C02   Agent Session 状态机（白名单迁移+          ✅ Batch 6
-              步预算门禁）—— 121 号
-P27-B01–B06   Tool Catalog 投影/Plan Schema/Validator/   ✅ 133/139/140/148 号
-              Proposal Builder/Workflow Proposal/Risk
-P27-B06/C03–C07 + F 线 + §37/§38 可观测性               ✅ 134/136/147/153 号
-              （Loop/Replanning/取消/宿主接线/telemetry）
-P27-A01/D/E 线 + G 线 QA 矩阵                            ✅ 138/151/152/154 号
-              （Provider Caps、Approval D01-D05、
-              Memory/Privacy E01-E06、G01-G05 补强矩阵）
-P27-H01/H03   CI AI Tests（release_gate cargo test      ✅ 155 号
-              --workspace 含 G 线套件）+ AI Quality
-              Corpus（20 条冻结意图语料）
-P27-H02/H04/H05/H06                                    ◐ 部分
-              Security/Release Gate 随全仓 gate 运行；
-              MSIX 签名与发布流程等外部证书（后置）
-
-── P2.8 Ecosystem & Distribution（spec: files2/P2.8 —*.md）──────────
-P28           评审 + 6 批次计划冻结（102 号）：           📋 Batch 1 待启动
-              Foundation → Package+Resolver → 事务化
-              Install → Signature/Trust/Lifecycle →
-              Repository/UI → 集成/QA/Gate
-              ※ 地基已在：P2.4-D CLI staged install、
-              trust/capability 持久化、backup/restore
-P28-Batch1    Foundation：PluginIdentity + SHA-256       ✅ Batch 1
-              Integrity（自包含实现+标准向量）+
-              生命周期状态机（Broken 不得直接 Enabled）
-              —— 111 号
-P28-Batch2    Dependency Resolver + InstallPlan          ✅ Batch 2
-              （确定性拓扑/缺失/环可解释）—— 112 号
-P28-Batch3    事务化 Install（stage→activate +          ✅ Batch 3
-              逆序回滚）—— 113 号
-P28-Batch4    Trust Model fail-closed 矩阵 + 生命周期    ✅ Batch 4
-              管理器（§8/§9/§35）—— 114 号
-P28-Batch5    Repository Index + Marketplace 搜索        ✅ Batch 5
-              （原子持久化/发布校验和/trust badge）—— 115 号
-P28-Batch6    集成/Audit/QA/Gate 收口                    ⏳ 未开始
-
-── P2.9 System Integration & Automation ────────────────────────────
-P29           评审 + 6 批次计划冻结（103 号）：           📋 Batch 1 待启动
-              契约基座 → File/Clipboard → Window/
-              Process → Shell/URI/Notification →
-              Policy/Confirmation → Race/Security/Gate
-              ※ 本质是既有分散能力的 Adapter 收敛，
-              非新执行通道；与 P2.6/P2.7/P2.8 可并行
-              ※ 四阶段共约 20 批次待做，建议交错推进
-P29-Batch1    系统契约基座（Capability/Risk/Target/      ✅ Batch 1
-              Command/Resolver 骨架/Mock，纯类型
-              零 OS）—— 104 号
-P29-Batch2    File Adapter（SystemCommand→既有 Action    ✅ Batch 2
-              映射，fail-closed）—— 105 号
-P29-Batch3    Process/Window 能力分类与命令构建          ✅ Batch 3
-              （fail-closed taxonomy，纯类型）—— 122 号
-P29-Batch4    Shell/URI/Notification/Power 分类与        ✅ Batch 4
-              命令构建（fail-closed）—— 123 号
-P29-Batch5    System Policy（origin 白名单+风险上限）+    ✅ Batch 5
-              origin 传播 —— 124 号
-P29-Batch6    Race/Security/Soak/Fault 收口              ⏳ 未开始
-              （Windows Adapter 统一后置接入）
-
-P2.4-E     Plugin Dev Diagnostics                       ✅ Batch 4
-           (E01 Provider 失败/成功路径→结构化诊断 +
-            E03 快照落盘 + E04 replay + E05 分类打通
-            —— 94 号)
-P2.4-F     Release Closure                              ✅ Batch 4
-           (G13 "P2.4 foundation conformance" 5 套件
-            入 release_gate；G01~G13 全 PASS —— 94 号)
-```
-
-# 7.5 P2.1/P2.2 文档归档（review 82 §26 采纳）
-
-P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
-
-- `docs/specs/` — 9 份已定稿设计规范（带 IMPLEMENTED / PARTIALLY IMPLEMENTED 状态头）
-- `docs/history/` — 批次实施记录（63→87，按时间序，含每批测试基线）
-- `docs/README.md` — 导航 + 状态矩阵摘要
-
-仍活跃的评审/规划文档在 `files2/`（P2.2-D/E 主体、P2.1-D.1 持久 Catalog、P2.3 规划）。
-四态状态模型（DESIGNED → IMPLEMENTED → INTEGRATED → ACCEPTED）自本手册 2026-09-07 修订起生效，不再用单一 ✅ 表达批次完成度。
+| 里程碑 | 一句话 | 权威状态 |
+|---|---|---|
+| 1.0 GA | 核心管线/UI/插件执行链，G01–G14 gate | `docs/phase/status.md` |
+| P2.4 Foundation | Catalog 2.0 / Index 2.0 / Trust / CLI | `docs/phase/status.md` |
+| P2.5 Search Intelligence | Contract v2 / Coordinator / FTS5 / Ranking / Pinyin 全表 | `docs/phase/status.md` |
+| P2.6 Workflow 2.0 | Graph/Durable/Approval/Trigger/Editor Surface | `docs/phase/status.md` |
+| P2.7 AI/Agent | A–G 全线 + H（语料/CI 载体）；签名 BLOCKED-EXTERNAL | `docs/phase/status.md` |
+| P2.8 Plugin Lifecycle & Local Ecosystem | 本地生态闭环；Marketplace/签名 DEFERRED/BLOCKED-EXTERNAL | `docs/phase/status.md` |
+| P2.9 System Integration | Capability/Policy/Windows Adapter（真 Win32） | `docs/phase/status.md` |
+| P2.10 Hardening | Effect Authority/动态目标/执行语义/Replan/E2E/文档对齐 | `docs/phase/status.md` |
 
 # 8. 剩余工作（全部有归属，无悬空）
 
@@ -434,10 +183,10 @@ P2.1/P2.2 阶段的定稿设计规范与批次实施记录已归档：
 # 9. 常用命令
 
 ```bash
-cargo test --workspace          # 行为回归闸门（当前 748 全绿）
+cargo test --workspace          # 行为回归闸门（当前 887 全绿；含 P2.7 G 线/语料/P2.10 E2E）
 cargo build --workspace         # 零警告检查
 python scripts/check_topology.py  # 拓扑 + SDK 依赖守卫
-python scripts/release_gate.py    # Release Gate（G01~G14：1.0 + P2.4/P2.5 conformance + evidence/manifest）
+python scripts/release_gate.py    # Release Gate（G01~G14：1.0 + P2.4/P2.5 conformance + evidence/manifest；AI 测试随 cargo test 全量运行）
 LAUNCHER_SNAPSHOT_DIR=<dir> ./target/debug/launcher-app   # 10 张 VR 基线
 LAUNCHER_PYTHON=<python> cargo test -p launcher-plugin-host  # Python SDK E2E
 ```
@@ -449,4 +198,7 @@ LAUNCHER_PYTHON=<python> cargo test -p launcher-plugin-host  # Python SDK E2E
 3. 所有跨边界引用用 stable id（command_id/action_id/run_id/execution_id）；provider_id 永远 Host 权威。
 4. Capability 单调性：requires ⊆ manifest；metadata（MCP annotations 等）只是 Policy 输入。
 5. UI 永远是 projection：不解析语义、不判 capability、不执行 Effect（INV-035~037/062~065）。
-6. 每轮收尾：`cargo test --workspace` 全绿 + `cargo build` 零警告 + `check_topology.py` 通过。
+6. 系统 Effect 只能经 `execute_system_effect`（Resolver policy → engine 铸造 token → adapter）；adapter 边界没有 confirmed/authority 参数，token move-only 一次性（INV-EFFECT-101~106）。
+7. 效果不确定性引用 EXECUTION-SEMANTICS-v1：Timeout ≠ Failed；Unknown/Executing 不盲目重试，走 Recovery 路由；Replan 绝不重执行 Succeeded 步骤。
+8. 阶段状态查 `docs/phase/status.md`，不要在 HANDBOOK/README 里新增状态事实；history 不可回写。
+9. 每轮收尾：`cargo test --workspace` 全绿 + `cargo build` 零警告 + `check_topology.py` 通过。
