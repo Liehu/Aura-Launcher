@@ -19,8 +19,10 @@ import {
     WorkflowEntry,
     SettingRow,
 } from "management.slint";
+import { ToolNodeItem, ToolSurface } from "tool-surface.slint";
 
 export { EditorRowItem, ManagementWindow, PluginEntry, WorkflowEntry, SettingRow }
+export { ToolNodeItem, ToolSurface }
 
 // re-export so the Rust side can set the resolution-adaptive ui-scale
 export { Theme }
@@ -81,7 +83,8 @@ export component AppWindow inherits Window {
     property <bool> in-action: root.panel-visible && root.actions.length > 0;
     property <bool> in-workflow: root.wf-visible;
     property <bool> in-editor: root.editor-visible;
-    property <bool> in-main: !root.in-action && !root.in-workflow && !root.in-editor;
+    property <bool> in-tool: root.tool-visible;
+    property <bool> in-main: !root.in-action && !root.in-workflow && !root.in-editor && !root.in-tool;
     property <bool> has-query: search.text != "";
     property <bool> show-results: root.in-main && root.has-query;
 
@@ -100,6 +103,7 @@ export component AppWindow inherits Window {
         root.in-action ? panel.content-height
         : root.in-workflow ? wf.content-height
         : root.in-editor ? ed.content-height
+        : root.in-tool ? ts.content-height
         : Theme.row-search
           + (root.has-query
               ? (root.results.length > 0
@@ -147,6 +151,14 @@ export component AppWindow inherits Window {
     in-out property <bool> detail-visible;
     // P3.2-B1: rich-result lines for the selected command (host-rendered)
     in property <[string]> detail-lines;
+    // P3-UI.1: tool surface (interactive tool session view)
+    in-out property <bool> tool-visible;
+    in property <[ToolNodeItem]> tool-nodes;
+    in property <string> tool-title;
+    in property <string> tool-status;
+    callback tool-event(string, string, string);
+    callback tool-close();
+    callback tool-surface-closed();
     callback editor-closed();
     callback editor-add-node(string, string);
     callback editor-remove-node(string);
@@ -184,7 +196,13 @@ export component AppWindow inherits Window {
         key-pressed(event) => {
             // fired when this scope itself holds focus (Action/Workflow
             // modes hide the search box; focus-keys() moved focus here)
-            if (root.editor-visible) {
+            if (root.tool-visible) {
+                if (event.text == Key.Escape) {
+                    root.tool-visible = false;
+                    root.tool-surface-closed();
+                }
+                accept
+            } else if (root.editor-visible) {
                 // P2.6-E03: editor mode — Esc closes back to main; typing
                 // goes to the editor's own LineEdit (not captured here)
                 if (event.text == Key.Escape) {
@@ -428,6 +446,21 @@ export component AppWindow inherits Window {
                 color: Theme.text-tertiary;
                 font-size: Theme.type-caption;
             }
+        }
+    }
+
+    // P3-UI.1 Tool surface: interactive tool session view
+    ts := ToolSurface {
+        y: parent.height - Theme.padding-window - root.status-height - self.height;
+        width: parent.width;
+        visible: root.tool-visible;
+        nodes: root.tool-nodes;
+        tool-title: root.tool-title;
+        status-text: root.tool-status;
+        tool-event(node-id, event, value) => { root.tool-event(node-id, event, value); }
+        close-requested() => {
+            root.tool-visible = false;
+            root.tool-surface-closed();
         }
     }
 

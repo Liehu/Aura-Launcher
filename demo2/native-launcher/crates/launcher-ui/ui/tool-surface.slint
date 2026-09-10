@@ -1,0 +1,130 @@
+// ToolSurface (P3-UI.1): renders a declarative UI tree from a plugin's
+// tool.open response. The host flattens the UiSchema tree into a node list
+// (depth-encoded for indentation); this component renders each node by kind
+// and forwards user interactions upward.
+import { Theme } from "theme.slint";
+import { ThemedButton } from "primitives/themed-button.slint";
+import { LineEdit } from "std-widgets.slint";
+
+export struct ToolNodeItem {
+    node-id: string,
+    kind: string,
+    title: string,
+    value: string,
+    depth: int,
+    readonly: bool,
+}
+
+export component ToolSurface inherits Rectangle {
+    in property <[ToolNodeItem]> nodes;
+    in property <string> tool-title;
+    in property <string> status-text;
+    callback tool-event(string /* node-id */, string /* event */, string /* value */);
+    callback close-requested();
+
+    background: Theme.bg-canvas;
+    out property <length> content-height: Theme.space-2 * 2
+        + 32px + Theme.space-1
+        + nodes.length * 40px + (nodes.length > 0 ? Theme.space-1 : 0px)
+        + 20px;
+
+    VerticalLayout {
+        padding: Theme.spacing-md;
+        spacing: Theme.space-2;
+
+        // title bar
+        HorizontalLayout {
+            height: 32px;
+            spacing: Theme.space-2;
+            alignment: start;
+            Text {
+                text: tool-title;
+                color: Theme.text-primary;
+                font-size: Theme.type-title;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            ThemedButton {
+                text: "Close";
+                clicked => { root.close-requested(); }
+            }
+        }
+
+        // node rows (flattened tree, depth-indented)
+        for item in root.nodes: HorizontalLayout {
+            padding-left: item.depth * 16px;
+            height: 40px;
+            spacing: Theme.space-2;
+            alignment: start;
+
+            // text / markdown → static text
+            if item.kind == "text" || item.kind == "markdown": Text {
+                text: item.title;
+                color: Theme.text-primary;
+                font-size: Theme.type-body;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            // text_field / text_area → editable input
+            if item.kind == "text_field" || item.kind == "text_area": LineEdit {
+                text: item.value;
+                placeholder-text: item.title;
+                width: parent.width - item.depth * 16px - 16px;
+                edited(t) => { root.tool-event(item.node-id, "change", t); }
+                accepted(t) => { root.tool-event(item.node-id, "submit", t); }
+            }
+
+            // button / action_button → button
+            if item.kind == "button" || item.kind == "action_button": ThemedButton {
+                text: item.title;
+                clicked => { root.tool-event(item.node-id, "click", ""); }
+            }
+
+            // key_value → "key: value" text
+            if item.kind == "key_value": Text {
+                text: item.title;
+                color: Theme.text-secondary;
+                font-size: Theme.type-secondary;
+                vertical-alignment: center;
+            }
+
+            // separator → thin line
+            if item.kind == "separator": Rectangle {
+                height: 1px;
+                background: Theme.border-subtle;
+                horizontal-stretch: 1;
+            }
+
+            // checkbox → toggle + label
+            if item.kind == "checkbox": HorizontalLayout {
+                spacing: Theme.space-1;
+                alignment: start;
+                Text {
+                    text: item.value == "true" ? "☑" : "☐";
+                    color: Theme.text-primary;
+                    font-size: Theme.type-body;
+                    vertical-alignment: center;
+                    width: 24px;
+                }
+                Text {
+                    text: item.title;
+                    color: Theme.text-secondary;
+                    font-size: Theme.type-body;
+                    vertical-alignment: center;
+                }
+            }
+
+            // spacer
+            if item.kind == "spacer": Rectangle { height: 8px; }
+        }
+
+        // status line
+        Text {
+            text: root.status-text;
+            color: Theme.text-tertiary;
+            font-size: Theme.type-caption;
+        }
+    }
+}
