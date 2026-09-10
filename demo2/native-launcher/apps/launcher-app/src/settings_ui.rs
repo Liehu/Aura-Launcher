@@ -41,7 +41,22 @@ fn base_cmd(id: &str, title: &str, subtitle: &str, target: &str) -> Command {
 pub fn settings_commands(q: &QueryContext, cfg: &launcher_config::AppConfig) -> Vec<Command> {
     let theme_next = next_theme(&cfg.theme_mode);
     let autostart_label = if cfg.autostart { "Disable" } else { "Enable" };
+    let ai_state = match &cfg.llm {
+        None => "AI Agent: not configured (add [llm] to config.toml)".to_string(),
+        Some(l) => format!(
+            "AI Agent: {} / {} · remote data {}",
+            l.base_url,
+            l.model,
+            if l.allow_remote_data { "ENABLED" } else { "DISABLED (local-first)" }
+        ),
+    };
     let mut cmds = vec![
+        base_cmd(
+            "settings:ai",
+            &format!("Settings · {ai_state}"),
+            "click to open config.toml for [llm] / allow_remote_data",
+            "ai",
+        ),
         base_cmd(
             "settings:theme",
             &format!("Settings · Theme: switch to {theme_next}"),
@@ -118,6 +133,19 @@ pub fn apply(target: &str) -> anyhow::Result<String> {
                 "Autostart {}",
                 if cfg.autostart { "enabled" } else { "disabled" }
             ))
+        }
+        "ai" => {
+            // informational: reflect current state; config is one click away
+            let cfg2 = launcher_config::load_or_create(&cfg_path)?;
+            Ok(match &cfg2.llm {
+                None => "AI Agent: not configured — add an [llm] section to config.toml".into(),
+                Some(l) => format!(
+                    "AI Agent: {} / {} · remote data {}",
+                    l.base_url,
+                    l.model,
+                    if l.allow_remote_data { "ENABLED (data leaves machine)" } else { "DISABLED (local-first)" }
+                ),
+            })
         }
         "config" => {
             // reuse the settings command's editor opening path

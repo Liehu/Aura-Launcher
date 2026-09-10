@@ -548,6 +548,30 @@ fn spawn_recent(
         {
             let mut st = state.lock().expect("state lock");
             st.current_results = st.core.recent_commands(limit);
+            // P3.0-F09: surface recent completed agent goals as one-click
+            // rerun entries (differentiation: the agent loop is discoverable)
+            for (i, goal) in agent_service::recent_goals(3).into_iter().enumerate() {
+                st.current_results.push(launcher_domain::Command {
+                    id: format!("agent:recent:{i}"),
+                    title: format!("▶ Run again: {goal}"),
+                    subtitle: Some("AI Agent · re-run this completed goal".into()),
+                    icon: None,
+                    provider_id: "agent".into(),
+                    score: 0.0,
+                    keywords: vec!["agent".into()],
+                    category: launcher_domain::Category::Command,
+                    actions: vec![launcher_domain::Action {
+                        kind: launcher_domain::ActionKind::Execute,
+                        payload: None,
+                        id: Some("run".into()),
+                        title: Some("Run agent".into()),
+                        disabled_reason: None,
+                        shortcut: None,
+                        confirmation_required: false,
+                    }],
+                    target: Some(goal),
+                });
+            }
             st.results_gen = st.context_gen;
             st.selected = 0;
         }
@@ -1858,6 +1882,14 @@ fn main() -> anyhow::Result<()> {
     apply_ui_scale(&ui);
     ui.set_accent(parse_theme_color(&cfg.theme_color));
     apply_theme_mode(&ui, &cfg.theme_mode);
+    let _ = slint::invoke_from_event_loop({
+        let ui_weak = ui.as_weak();
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.set_search_hint("Search…  try: agent · workflow · settings · =calc".into());
+            }
+        }
+    });
     ui.set_results(slint::ModelRc::new(std::rc::Rc::new(
         slint::VecModel::from(Vec::<ResultItem>::new()),
     )));

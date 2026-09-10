@@ -52,7 +52,7 @@
 ## P3.0 Launcher Experience 1.0（进行中）
 - B0 搜索手感（模糊匹配/防抖/即时答案/设置面）：**ACCEPTED**（161 号）
 - B1 视觉与信息密度（双主题/微动效/元数据/详情面板/自绘控件/VR 双基线）：**ACCEPTED**（162 号）
-- B2 差异化（入口前移/settings:ai/富结果草案）：**IMPLEMENTED → INTEGRATED 待验收**（163 号待办）
+- B2 差异化（入口前移/settings:ai/富结果草案）：**ACCEPTED**（163 号）
 
 ## P3 前置条件（Hard Gate）
 P2.10 出口条件全部满足（见 159 号 Hard Gate 自查表）；P3 可启动。

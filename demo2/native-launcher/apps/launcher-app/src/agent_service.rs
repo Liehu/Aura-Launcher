@@ -478,6 +478,22 @@ fn runs_slot() -> &'static Mutex<RunMemory> {
     RUNS.get_or_init(|| Mutex::new(RunMemory::new()))
 }
 
+/// P3.0-F09: the most recent DISTINCT completed goals (newest first,
+/// bounded, deduped) — the empty-query "run it again" entries.
+pub fn recent_goals(max: usize) -> Vec<String> {
+    let runs = runs_slot().lock().expect("run memory lock");
+    let mut out: Vec<String> = Vec::new();
+    for r in runs.runs().iter().rev() {
+        if r.status.starts_with("Completed") && !out.contains(&r.goal) {
+            out.push(r.goal.clone());
+            if out.len() >= max {
+                break;
+            }
+        }
+    }
+    out
+}
+
 /// F05: the last goal, for `agent retry`.
 static LAST_GOAL: std::sync::OnceLock<Mutex<Option<String>>> = std::sync::OnceLock::new();
 

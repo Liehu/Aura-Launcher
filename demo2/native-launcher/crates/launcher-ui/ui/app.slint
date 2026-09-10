@@ -139,6 +139,8 @@ export component AppWindow inherits Window {
     callback editor-undo();
     callback editor-redo();
     callback editor-export();
+    // P3.0-F09: the host rotates the affordance hint (agent · workflow · …)
+    in-out property <string> search-hint: "Search...";
     callback query-changed(string);
     callback execute(string);
     callback selection-changed(string);
@@ -261,6 +263,7 @@ export component AppWindow inherits Window {
         // stays in this window's callbacks)
         search := SearchBox {
             visible: root.in-main;
+            placeholder: root.search-hint;
             // main-mode navigation, intercepted inside the LineEdit BEFORE
             // its cursor handling (SearchBox.key-pressed contract)
             key-pressed(event) => {
