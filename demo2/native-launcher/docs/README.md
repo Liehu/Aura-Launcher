@@ -88,6 +88,7 @@
 | `161-p30-b0-search-feel.md` | **P3.0 Batch B0**：搜索手感——评分化模糊匹配（拼音双键）+ 70ms 防抖 + 即时算术答案 + 原生设置面；模糊 P95 2.97ms | ✅ 904 tests |
 | `162-p30-b1-visual-density.md` | **P3.0 Batch B1**：视觉与信息密度——双主题调色板（VR 双基线确定性验证）+ 微动效 + 文件元数据 + Tab 详情面板 + ThemedButton | ✅ 906 tests |
 | `163-p30-b2-differentiation.md` | **P3.0 Batch B2 + 收口**：空查询 Agent 重跑分组 + search-hint + settings:ai + 富结果协议草案；P3.0 B0-B2 全 ACCEPTED | ✅ 906 tests |
+| `164-p30-ux-polish.md` | **P3.0 UX 打磨**：release 隐藏控制台（debug 保留）+ 内置功能优先级（score hint/中文关键词，内置 > 文件索引）+ VR 基线重生成 | ✅ 906 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

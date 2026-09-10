@@ -46,7 +46,8 @@ impl WorkflowCatalogProvider {
                             subtitle: Some(format!("Workflow · {} steps", def.steps.len())),
                             icon: None,
                             provider_id: PROVIDER_ID.into(),
-                            score: 0.0,
+                            // P3.0: installed workflows rank above files
+                            score: 0.7,
                             keywords: vec![def.name.to_lowercase(), stem, "workflow".into()],
                             category: Category::Command,
                             actions: vec![Action {

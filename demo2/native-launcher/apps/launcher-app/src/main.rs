@@ -1,3 +1,7 @@
+// P3.0 UX: no console window in release builds (logs still go to the
+// rolling file via tracing); debug builds keep the console for development.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 //! launcher-app: MVP binary merging UI + Core (allowed for v0.1, spec 3.1).
 //!
 //! Vertical slice: hotkey -> popup -> search (apps/files/plugins/context)
@@ -557,7 +561,7 @@ fn spawn_recent(
                     subtitle: Some("AI Agent · re-run this completed goal".into()),
                     icon: None,
                     provider_id: "agent".into(),
-                    score: 0.0,
+                    score: 0.6,
                     keywords: vec!["agent".into()],
                     category: launcher_domain::Category::Command,
                     actions: vec![launcher_domain::Action {
@@ -999,8 +1003,8 @@ impl launcher_core::Provider for AgentCommandProvider {
             subtitle: Some("Runs an LLM-planned agent through the action pipeline (Esc on the panel cancels between steps)".into()),
             icon: None,
             provider_id: "agent".into(),
-            score: 0.0,
-            keywords: vec!["agent".into(), "ai".into()],
+            score: 0.8,
+            keywords: vec!["agent".into(), "ai".into(), "智能".into(), "助手".into()],
             category: launcher_domain::Category::Command,
             actions: vec![launcher_domain::Action {
                 kind: launcher_domain::ActionKind::Execute,
