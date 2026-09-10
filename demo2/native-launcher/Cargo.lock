@@ -2903,11 +2903,22 @@ version = "1.0.0"
 dependencies = [
  "launcher-domain",
  "launcher-ipc",
+ "launcher-plugin-testkit",
  "launcher-runtime",
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
  "windows 0.58.0",
+]
+
+[[package]]
+name = "launcher-plugin-testkit"
+version = "1.0.0"
+dependencies = [
+ "launcher-domain",
+ "launcher-ipc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -15,6 +15,7 @@ members = [
         "crates/launcher-runtime",
         "crates/launcher-ai",
     "crates/launcher-plugin-api",
+    "crates/launcher-plugin-testkit",
     "crates/launcher-plugin-host",
     "crates/launcher-core",
     "crates/launcher-ui",
@@ -52,6 +53,7 @@ launcher-runtime = { path = "crates/launcher-runtime" }
 launcher-ai = { path = "crates/launcher-ai" }
 launcher-plugin-api = { path = "crates/launcher-plugin-api" }
 launcher-plugin-host = { path = "crates/launcher-plugin-host" }
+launcher-plugin-testkit = { path = "crates/launcher-plugin-testkit" }
 launcher-core = { path = "crates/launcher-core" }
 launcher-ui = { path = "crates/launcher-ui" }
 serde = { version = "1", features = ["derive"] }

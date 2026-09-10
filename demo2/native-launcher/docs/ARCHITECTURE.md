@@ -52,7 +52,7 @@ launcher-config / launcher-hotkey / launcher-providers / launcher-ui
     |
 apps/launcher-app (组装入口, ADR-0002 UI+Core 同进程)
 apps/launcher-indexer-service (独立索引进程, stdio JSON-RPC)
-apps/example-echo-plugin, apps/example-testplugins (示例插件/契约测试 binaries)
+crates/launcher-plugin-testkit, apps/example-echo-plugin, apps/example-testplugins (示例插件/契约测试 binaries)
 apps/launcher-bench (性能基线 harness)
 ```
 

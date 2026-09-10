@@ -46,7 +46,7 @@ launcher-domain (纯模型, 无 OS/IO 依赖)
 launcher-search / launcher-context / launcher-action / launcher-ipc / launcher-indexer
     ^                                       ^
     |                                       |
-launcher-core (Provider trait, 编排)   launcher-plugin-host / launcher-plugin-api
+launcher-core (Provider trait, 编排)   launcher-plugin-host / launcher-plugin-api / launcher-plugin-testkit
     ^
     |
 launcher-config / launcher-hotkey / launcher-providers / launcher-ui

@@ -8,7 +8,7 @@ boundaries; plugin processes are spawned on demand and shut down when idle.
 
 **Native Launcher 1.0.0 RC1**：核心产品完成、核心架构冻结、平台基础设施完成。
 当前权威基线：**P2.4 进行中（见 docs/history/）** / zero warnings / topology
-17 crates + 9 apps /
+18 crates + 9 apps /
 adversarial S0=S1=S2=0 / Release Gate G01~G12 PASS / 30min 资源 soak PASS /
 10,000 次 show/hide soak PASS / hotkey→popup P50 307µs · P95 19.7ms（目标
 20ms/35ms）**。逐条验收基线见 `demo2/files2/97-launcher-1.0-final-audit.md`
@@ -89,7 +89,7 @@ containing `plugin.json` and the executable:
 ```
 
 The plugin speaks newline-delimited JSON-RPC on stdin/stdout
-(`launcher-plugin-api::serve`). See `plugins/examples/echo-plugin/`.
+(`launcher-plugin-api, launcher-plugin-testkit::serve`). See `plugins/examples/echo-plugin/`.
 Plugin framework details: `ARCHITECTURE.md` §插件框架.
 
 ## Benchmark
