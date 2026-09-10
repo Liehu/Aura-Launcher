@@ -3,7 +3,12 @@
 //! pure functions only, fully unit-testable, no IO.
 
 pub mod cache;
+pub mod fuzzy;
 pub mod intelligence;
+
+/// P3.0-F01: the fuzzy matcher's bounded contribution to the total score
+/// (design spec: cap 40 — below an exact title match on every axis).
+pub const FUZZY_MAX_CONTRIBUTION: f32 = 40.0;
 
 use std::path::Path;
 
@@ -240,11 +245,34 @@ pub fn score_with_parts(
         parts.matched_field = MatchedField::Keyword;
     }
 
-    // token-level (subsequence fuzzy) match — only when nothing lexical hit
+    // token-level scored fuzzy match (P3.0-F01) — only when nothing
+    // lexical hit. Candidates: title (+file stem) and the pinyin keys so
+    // CJK names are reachable by romanized input. The scored matcher
+    // replaces the old boolean subsequence; the raw score is normalized
+    // into a bounded contribution (design spec: cap 40).
     let lexical = parts.plugin_hint + parts.title + parts.keyword;
-    if lexical == 0.0 && is_subsequence(&title, q) {
-        parts.fuzzy = w.fuzzy_subsequence;
-        parts.matched_field = MatchedField::Fuzzy;
+    if lexical == 0.0 {
+        let mut candidates: Vec<&str> = vec![&title];
+        if command.category == Category::File {
+            if let Some(stem) = Path::new(&title).file_stem().and_then(|s| s.to_str()) {
+                candidates.push(stem);
+            }
+        }
+        for k in &command.keywords {
+            candidates.push(k.as_str());
+        }
+        let py_init = launcher_domain::pinyin::pinyin_initials(&title);
+        let py_full = launcher_domain::pinyin::pinyin_full(&title);
+        if !py_init.is_empty() {
+            candidates.push(py_init.as_str());
+        }
+        if !py_full.is_empty() && py_full != py_init {
+            candidates.push(py_full.as_str());
+        }
+        if let Some(best) = fuzzy::fuzzy_score_best(candidates, q) {
+            parts.fuzzy = (best / fuzzy::PREFIX_SCORE).min(1.0) * FUZZY_MAX_CONTRIBUTION;
+            parts.matched_field = MatchedField::Fuzzy;
+        }
     }
     // every token must appear somewhere for multi-token queries
     if query.tokens.len() > 1 {
@@ -281,16 +309,6 @@ fn best_title_score(candidate: &str, query: &str, w: &RankingWeights) -> f32 {
     } else {
         0.0
     }
-}
-
-fn is_subsequence(haystack: &str, needle: &str) -> bool {
-    let mut it = haystack.chars();
-    for n in needle.chars() {
-        if !it.any(|h| h == n) {
-            return false;
-        }
-    }
-    true
 }
 
 /// P2.1-C semantic identity key (review 77 §4-5/§28: IdentityKey v1 — a

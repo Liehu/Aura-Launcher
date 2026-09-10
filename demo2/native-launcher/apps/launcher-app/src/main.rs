@@ -9,6 +9,7 @@
 
 mod agent_service;
 mod autostart;
+mod settings_ui;
 mod editor_surface;
 mod keyboard_walkthrough;
 mod win_platform;
@@ -17,7 +18,7 @@ mod visual_scenarios;
 mod workflow_service;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use launcher_action::Effect;
@@ -183,6 +184,10 @@ fn build_core(
     core.register(Box::new(AgentCommandProvider));
     // P2.6-E03: workflow editor entry point
     core.register(Box::new(EditorCommandProvider::new()));
+    // P3.0-F03: instant answers (arithmetic)
+    core.register(Box::new(launcher_core::providers::answers::AnswersProvider));
+    // P3.0-F04: native settings surface
+    core.register(Box::new(settings_ui::SettingsUiProvider));
 
     // the indexer connection doubles as the bounded history sink (WAL)
     core.set_history(indexer);
@@ -1239,6 +1244,7 @@ fn execute_action_by_id(
                     || c.provider_id == "settings"
                     || c.provider_id == "agent"
                     || c.provider_id == "editor"
+                    || c.provider_id == "settings-ui"
             })
             .map(|c| (c.provider_id.clone(), c.target.clone()))
             .unwrap_or_default()
@@ -1246,6 +1252,20 @@ fn execute_action_by_id(
     match (routed_provider.as_str(), routed_target) {
         ("workflows", Some(file)) => {
             run_installed_workflow(state, ui_weak, file);
+            return;
+        }
+        ("settings-ui", Some(target)) => {
+            // P3.0-F04: apply the settings action and surface the result
+            let state2 = state.clone();
+            let ui2 = ui_weak.clone();
+            std::thread::spawn(move || match settings_ui::apply(&target) {
+                Ok(msg) => {
+                    tracing::info!(target = %target, "settings.applied");
+                    set_status(ui2, msg);
+                }
+                Err(e) => set_status(ui2, format!("⚠ settings: {e}")),
+            });
+            let _ = state2;
             return;
         }
         ("editor", _) => {
@@ -1999,19 +2019,37 @@ fn main() -> anyhow::Result<()> {
         let ui_weak = ui_weak.clone();
         // MUST-2: read the LIVE result limit (updated by config hot reload)
         let reload_state = hotkey_deps.reload_state.clone();
+        // P3.0-F02: 70ms debounce for non-empty queries — an epoch counter
+        // discards stale timers; empty queries bypass (recent view is instant)
+        let debounce_epoch = Arc::new(AtomicU64::new(0));
         ui.on_query_changed(move |q| {
             let limit = reload_state
                 .lock()
                 .map(|rs| rs.result_limit)
                 .unwrap_or(launcher_core::MAX_RESULTS);
-            // P2.1 §57: empty query = the recent/frequent view, not "no results"
-            spawn_search_or_recent(
-                state.clone(),
-                session.clone(),
-                ui_weak.clone(),
-                q.to_string(),
-                limit,
-            );
+            let query = q.to_string();
+            if query.trim().is_empty() {
+                debounce_epoch.fetch_add(1, Ordering::SeqCst);
+                spawn_search_or_recent(
+                    state.clone(),
+                    session.clone(),
+                    ui_weak.clone(),
+                    query,
+                    limit,
+                );
+                return;
+            }
+            let my = debounce_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            let session = session.clone();
+            let debounce_epoch = debounce_epoch.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(70));
+                if debounce_epoch.load(Ordering::SeqCst) == my {
+                    spawn_search_or_recent(state, session, ui_weak, query, limit);
+                }
+            });
         });
     }
     {

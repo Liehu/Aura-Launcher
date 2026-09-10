@@ -115,6 +115,9 @@ pub struct AppConfig {
     /// P2.7: LLM backend for the Agent Loop (absent = Agent disabled).
     #[serde(default)]
     pub llm: Option<LlmConfig>,
+    /// P3.0-F05 theme mode: `"dark"` | `"light"` | `"system"`.
+    #[serde(default)]
+    pub theme_mode: String,
 }
 
 fn default_result_limit() -> usize {
@@ -146,6 +149,7 @@ impl Default for AppConfig {
             python_path: None,
             mcp_servers: Vec::new(),
             llm: None,
+            theme_mode: "dark".into(),
         }
     }
 }
@@ -330,6 +334,7 @@ mod tests {
             python_path: None,
             mcp_servers: Vec::new(),
             llm: None,
+            theme_mode: "dark".into(),
         };
         save(&t.0, &cfg).unwrap();
         let loaded = load_or_create(&t.0).unwrap();

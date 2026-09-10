@@ -97,6 +97,11 @@ windows = { version = "0.58", features = [
     "ApplicationModel",
 ] }
 
+# P3.0-F01: the fuzzy matcher is on the per-keystroke hot path; keep it
+# optimized even in dev/test builds so the perf budget is measurable.
+[profile.dev.package.launcher-search]
+opt-level = 2
+
 [profile.release]
 opt-level = "s"
 lto = "thin"

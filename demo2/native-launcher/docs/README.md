@@ -85,6 +85,7 @@
 | `158-p210-batch2-mint-authority.md` | **P2.10 Batch 2**：铸造权收归 engine 内部（INV-EFFECT-104/105）+ token 命令绑定/审计元数据 + PID 身份 FILETIME 精度 + Cancelled/Unknown 重试语义 + Recovery Protocol | ✅ 883 tests |
 | `159-p210-closure.md` | **P2.10 Batch 3 + 收口**：Runtime Recovery Probe + Cross-Phase E2E（§33 三条黄金路径）+ State/Generation 契约 + docs/phase 权威层 | ✅ 887 tests |
 | `160-p210-handbook-index.md` | **P2.10 扫尾**：HANDBOOK 索引化（452→204 行，状态事实移交 docs/phase）+ 契约/红线/命令刷新；G20 ACCEPTED | ✅ 887 tests |
+| `161-p30-b0-search-feel.md` | **P3.0 Batch B0**：搜索手感——评分化模糊匹配（拼音双键）+ 70ms 防抖 + 即时算术答案 + 原生设置面；模糊 P95 2.97ms | ✅ 904 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |
