@@ -1,24 +1,46 @@
-//! Pinyin first-letter matching (P2.5/P2.6-A04/C04): index a pinyin initial
-//! for CJK filenames so users can search Chinese files by typing romanized
-//! initials. This is a SEARCH INDEX column, not a full pinyin table — it
-//! only stores the first letter of each CJK character's most common reading.
-//!
-//! Compact approach: use a bounded BMP-to-initial lookup covering the most
-//! common ~3500 simplified Chinese characters. Characters outside the table
-//! are skipped (no match contribution). Full pinyin (with tones) is a 2.x
-//! item.
+//! Pinyin first-letter + full-syllable matching (P2.5/P2.6-A04/C04 and the
+//! deferred "full pinyin table" optimization): index pinyin keys for CJK
+//! filenames so users can search Chinese files by typing romanized input.
+//! The accurate common-character table (pinyin_table) is the primary
+//! lookup; characters outside it fall back to the deterministic boundary
+//! approximation, so accuracy only improves as the table grows.
 
 /// Extract the pinyin initial (lowercase a-z) for a CJK character.
-/// Returns None for non-CJK or characters outside the covered range.
+/// Table-first; None for non-CJK.
 pub fn pinyin_initial(c: char) -> Option<char> {
     let code = c as u32;
     if !(0x4E00..=0x9FFF).contains(&code) {
         return None;
     }
-    // Use Unicode block range to approximate initial letter groups.
-    // This is a coarse but deterministic mapping — good enough for
-    // first-letter search (exact pinyin requires a full table, deferred).
-    Some(boundary_initial(code))
+    match crate::pinyin_table::lookup_syllable(c) {
+        Some(syl) => syl.chars().next(),
+        None => Some(boundary_initial(code)),
+    }
+}
+
+/// The accurate full pinyin syllable (tone-free) for a character, when it
+/// is in the common-character table. None = unknown (use `pinyin_initial`
+/// for the approximated initial instead).
+pub fn pinyin_syllable(c: char) -> Option<&'static str> {
+    if !(0x4E00..=0x9FFF).contains(&(c as u32)) {
+        return None;
+    }
+    crate::pinyin_table::lookup_syllable(c)
+}
+
+/// Full pinyin romanization for a filename: syllables for table-covered
+/// characters, the approximated initial for CJK characters outside the
+/// table (so mixed names stay matchable), non-CJK skipped. Lowercase.
+pub fn pinyin_full(name: &str) -> String {
+    name.chars()
+        .filter_map(|c| match pinyin_syllable(c) {
+            Some(syl) => Some(syl.to_string()),
+            None if (0x4E00..=0x9FFF).contains(&(c as u32)) => {
+                Some(boundary_initial(c as u32).to_string())
+            }
+            None => None,
+        })
+        .collect()
 }
 
 /// Boundary-based initial approximation using Unicode codepoint ranges.
@@ -48,16 +70,7 @@ fn boundary_initial(code: u32) -> char {
 /// Compute the pinyin initial string for a filename: for each CJK character,
 /// extract its initial; non-CJK characters are skipped. Result is lowercase.
 pub fn pinyin_initials(name: &str) -> String {
-    name.chars()
-        .filter_map(|c| {
-            let code = c as u32;
-            if (0x4E00..=0x9FFF).contains(&code) {
-                Some(boundary_initial(code))
-            } else {
-                None
-            }
-        })
-        .collect()
+    name.chars().filter_map(pinyin_initial).collect()
 }
 
 #[cfg(test)]
@@ -87,5 +100,27 @@ mod tests {
     fn non_cjk_produces_empty() {
         assert_eq!(pinyin_initials("english.txt"), "");
         assert_eq!(pinyin_initials(""), "");
+    }
+
+    /// Table-first initials: accurate for covered characters.
+    #[test]
+    fn initials_use_table() {
+        assert_eq!(pinyin_initial('的'), Some('d'));
+        assert_eq!(pinyin_initial('文'), Some('w'));
+        assert_eq!(pinyin_initial('A'), None);
+    }
+
+    /// Full pinyin: syllables for covered chars, initials for the rest.
+    #[test]
+    fn full_pinyin_romanization() {
+        assert_eq!(pinyin_full("文件夹"), "wenjianjia");
+        assert_eq!(pinyin_full("报告"), "baogao");
+        assert_eq!(pinyin_full("报表"), "baobiao");
+        // non-CJK skipped
+        assert_eq!(pinyin_full("report报告"), "baogao");
+        // unknown CJK falls back to the boundary initial (still a letter)
+        let s = pinyin_full("\u{9FFF}");
+        assert_eq!(s.len(), 1);
+        assert!(s.chars().next().unwrap().is_ascii_lowercase());
     }
 }

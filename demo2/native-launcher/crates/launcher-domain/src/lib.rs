@@ -4,6 +4,7 @@
 
 pub mod expr;
 pub mod pinyin;
+pub mod pinyin_table;
 pub mod failure;
 pub mod file_change;
 pub mod icon;

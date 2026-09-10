@@ -41,6 +41,14 @@ pub struct Indexer {
     fts_available: bool,
 }
 
+impl Indexer {
+    /// Test-only access to the raw connection (FTS content debugging).
+    #[doc(hidden)]
+    pub fn conn_debug(&self) -> &Connection {
+        &self.conn
+    }
+}
+
 /// Maximum number of files indexed per `rebuild` call, as a safety bound.
 pub const MAX_INDEX_ENTRIES: i64 = 500_000;
 
@@ -142,8 +150,32 @@ impl Indexer {
         // blocks metadata reads or writes (search falls back to LIKE, C05).
         // Content indexing is explicitly NOT enabled (spec C01 forbidden
         // list / C06 extension point).
+        // Full-pinyin optimization: the table now carries pinyin_full.
+        // FTS tables cannot ALTER ADD COLUMN, so an old-shape table is
+        // dropped and recreated (derived state; repopulated by the next
+        // rebuild below / the startup rescan).
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='files_fts'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n > 0)
+            .unwrap_or(false);
+        let has_full: bool = table_exists
+            && conn
+                .query_row(
+                    "SELECT COUNT(*) FROM pragma_table_info('files_fts') WHERE name = 'pinyin_full'",
+                    [],
+                    |r| r.get::<_, i64>(0),
+                )
+                .map(|n| n > 0)
+                .unwrap_or(false);
+        if table_exists && !has_full {
+            let _ = conn.execute_batch("DROP TABLE files_fts");
+        }
         let fts_available = match conn.execute_batch(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(name, pinyin_init, path UNINDEXED)",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(name, pinyin_init, pinyin_full, path UNINDEXED)",
         ) {
             Ok(()) => true,
             Err(e) => {
@@ -171,9 +203,10 @@ impl Indexer {
         drop(stmt);
         for (name, path) in &rows {
             let py = launcher_domain::pinyin::pinyin_initials(name);
+            let py_full = launcher_domain::pinyin::pinyin_full(name);
             tx.execute(
-                "INSERT INTO files_fts(name, pinyin_init, path) VALUES (?1, ?2, ?3)",
-                params![name, py, path],
+                "INSERT INTO files_fts(name, pinyin_init, pinyin_full, path) VALUES (?1, ?2, ?3, ?4)",
+                params![name, py, py_full, path],
             )?;
         }
 
@@ -184,10 +217,11 @@ impl Indexer {
     /// Incremental FTS sync for one upsert (caller's transaction).
     fn fts_upsert(tx: &rusqlite::Transaction, path: &str, name: &str) {
         let py = launcher_domain::pinyin::pinyin_initials(name);
+        let py_full = launcher_domain::pinyin::pinyin_full(name);
         if let Err(e) = (|| -> Result<(), rusqlite::Error> {
             tx.execute("DELETE FROM files_fts WHERE path = ?1", params![path])?;
-            tx.execute("INSERT INTO files_fts(name, pinyin_init, path) VALUES (?1, ?2, ?3)",
-                       params![name, py, path])?;
+            tx.execute("INSERT INTO files_fts(name, pinyin_init, pinyin_full, path) VALUES (?1, ?2, ?3, ?4)",
+                       params![name, py, py_full, path])?;
             Ok(())
         })() {
             tracing::warn!(error = %e, path = %path, "fts upsert skipped (non-fatal)");
@@ -297,7 +331,7 @@ impl Indexer {
         let mut stmt = self.conn.prepare_cached(
             "SELECT f.id, f.path, f.name, f.is_dir, f.size, f.modified_ms
              FROM files_fts j JOIN files f ON f.path = j.path
-             WHERE files_fts MATCH ?1 OR pinyin_init MATCH ?1
+             WHERE files_fts MATCH ?1
              ORDER BY rank, f.is_dir, length(f.name), f.path
              LIMIT ?2",
         )?;
