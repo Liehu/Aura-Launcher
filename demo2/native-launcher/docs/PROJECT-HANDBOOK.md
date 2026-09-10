@@ -327,7 +327,7 @@ P26-B         Durable Runtime（store/checkpoint/         ⏳ 未开始
 P26-C         Human Approval（契约/UI/安全）             ⏳ 未开始
 P26-D         Trigger Framework + Queue                  ⏳ 未开始
 P26-E         Visual Editor（7 任务）                    ⏳ 未开始
-P26-F/G       QA + Release                               ⏳ 未开始
+P26-F/G       QA + Release                               ✅ 137 号（G17 入 gate）
 
 ── P2.7 AI / Agent Productization（spec: files2/P2.7 开发设计规范）──
 P27-001       AI Contract v1（Intent/PlanStep/           ✅ Batch 1
@@ -342,9 +342,19 @@ P27-A04/A02   Prompt Builder + 注入清洗 + 上下文预算     ✅ Batch 5
               （E06-lite 第一二层，G05 批推进纵深）——120 号
 P27-C01/C02   Agent Session 状态机（白名单迁移+          ✅ Batch 6
               步预算门禁）—— 121 号
-P27-000/002/003 + A01/C03-C07/B/D/E/F/G/H 线           ⏳ 未开始
-              ※ B05 + Workflow Integration 依赖
-              P2.6 B 线（Durable Runtime）先行
+P27-B01–B06   Tool Catalog 投影/Plan Schema/Validator/   ✅ 133/139/140/148 号
+              Proposal Builder/Workflow Proposal/Risk
+P27-B06/C03–C07 + F 线 + §37/§38 可观测性               ✅ 134/136/147/153 号
+              （Loop/Replanning/取消/宿主接线/telemetry）
+P27-A01/D/E 线 + G 线 QA 矩阵                            ✅ 138/151/152/154 号
+              （Provider Caps、Approval D01-D05、
+              Memory/Privacy E01-E06、G01-G05 补强矩阵）
+P27-H01/H03   CI AI Tests（release_gate cargo test      ✅ 155 号
+              --workspace 含 G 线套件）+ AI Quality
+              Corpus（20 条冻结意图语料）
+P27-H02/H04/H05/H06                                    ◐ 部分
+              Security/Release Gate 随全仓 gate 运行；
+              MSIX 签名与发布流程等外部证书（后置）
 
 ── P2.8 Ecosystem & Distribution（spec: files2/P2.8 —*.md）──────────
 P28           评审 + 6 批次计划冻结（102 号）：           📋 Batch 1 待启动
