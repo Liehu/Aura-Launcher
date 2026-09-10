@@ -1,0 +1,39 @@
+// ThemedButton (P3.0-F15): a themed replacement for std-widgets Button —
+// hover/press/focus states through Theme tokens, motion via Theme.anim-ms.
+// Presentation only: it never interprets its label.
+import { Theme } from "../theme.slint";
+
+export component ThemedButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    height: 26px;
+    border-radius: Theme.radius-md;
+    background: ta.pressed ? Theme.bg-selected
+        : ta.has-hover ? Theme.bg-surface-elevated
+        : Theme.bg-surface;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.border-focus : Theme.border-default;
+    opacity: root.enabled ? 1.0 : 0.4;
+    animate background { duration: Theme.anim-ms * 2ms / 3; }
+    animate border-color { duration: Theme.anim-ms * 2ms / 3; }
+
+    HorizontalLayout {
+        alignment: center;
+        padding-left: Theme.spacing-sm;
+        padding-right: Theme.spacing-sm;
+        Text {
+            text: root.text;
+            color: Theme.text-primary;
+            font-size: Theme.type-caption;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}

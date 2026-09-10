@@ -383,6 +383,46 @@ fn apply_ui_scale(ui: &AppWindow) {
 #[cfg(not(windows))]
 fn apply_ui_scale(_ui: &AppWindow) {}
 
+// ---- P3.0-F05/F12: theme mode ------------------------------------------
+
+/// Effective light decision: `light` → true; `system` → follow the OS
+/// app-light preference (registry read, not an Effect); `dark`/unknown →
+/// false. `LAUNCHER_THEME_MODE` env overrides everything (VR capture).
+fn effective_light(mode: &str) -> bool {
+    let mode = std::env::var("LAUNCHER_THEME_MODE")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| mode.to_string());
+    match mode.as_str() {
+        "light" => true,
+        "system" => system_prefers_light(),
+        _ => false,
+    }
+}
+
+#[cfg(windows)]
+fn system_prefers_light() -> bool {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+    winreg::RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", KEY_READ)
+        .and_then(|k| k.get_value::<u32, _>("AppsUseLightTheme"))
+        .map(|v| v == 1)
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn system_prefers_light() -> bool {
+    false
+}
+
+/// Apply the resolved palette to the UI (must run on the UI thread or via
+/// slint::invoke_from_event_loop).
+fn apply_theme_mode(ui: &AppWindow, mode: &str) {
+    let light = effective_light(mode);
+    ui.global::<launcher_ui::Theme>().set_light_theme(light);
+    tracing::debug!(mode, light, "theme.applied");
+}
+
 struct AppState {
     /// P2.1-E5: icon pipeline (async extraction, L1/L2 cached)
     icons: launcher_providers::icons::IconService,
@@ -975,6 +1015,8 @@ struct ReloadState {
     mtime: Option<std::time::SystemTime>,
     hotkey: String,
     result_limit: usize,
+    /// P3.0-F05: dark/light/system — hot-reloaded with the config.
+    theme_mode: String,
 }
 
 /// GA-2 hotkey latency bench (Test Plan §8.1): when LAUNCHER_HOTKEY_BENCH is
@@ -1033,6 +1075,7 @@ fn maybe_reload_config(deps: &HotkeyDeps, ui: &AppWindow) {
     };
     ui.set_accent(parse_theme_color(&cfg.theme_color));
     apply_ui_scale(ui);
+    apply_theme_mode(ui, &cfg.theme_mode);
     let hotkey_changed = {
         let mut rs = deps.reload_state.lock().expect("reload state");
         let changed = rs.hotkey != cfg.hotkey;
@@ -1040,6 +1083,7 @@ fn maybe_reload_config(deps: &HotkeyDeps, ui: &AppWindow) {
             mtime,
             hotkey: cfg.hotkey.clone(),
             result_limit: cfg.result_limit,
+            theme_mode: cfg.theme_mode.clone(),
         };
         changed
     };
@@ -1150,6 +1194,15 @@ fn register_hotkey(hotkey_str: &str, deps: &HotkeyDeps) {
                         apply_ui_scale(&ui); // first show: winit DPI now known
                         // MUST-2: pick up config edits made since last show
                         maybe_reload_config(&deps, &ui);
+                        // P3.0-F12: re-resolve the palette (system mode may
+                        // have flipped since the last show)
+                        let mode = deps
+                            .reload_state
+                            .lock()
+                            .ok()
+                            .map(|rs| rs.theme_mode.clone())
+                            .unwrap_or_default();
+                        apply_theme_mode(&ui, &mode);
                         // P2.2-C: refresh the per-popup context snapshot
                         {
                             let folder = launcher_context::explorer::explorer_folders()
@@ -1804,6 +1857,7 @@ fn main() -> anyhow::Result<()> {
     win_platform::apply_tool_window(ui.window());
     apply_ui_scale(&ui);
     ui.set_accent(parse_theme_color(&cfg.theme_color));
+    apply_theme_mode(&ui, &cfg.theme_mode);
     ui.set_results(slint::ModelRc::new(std::rc::Rc::new(
         slint::VecModel::from(Vec::<ResultItem>::new()),
     )));
@@ -1991,6 +2045,7 @@ fn main() -> anyhow::Result<()> {
             mtime: std::fs::metadata(&cfg_path).and_then(|m| m.modified()).ok(),
             hotkey: cfg.hotkey.clone(),
             result_limit: cfg.result_limit,
+            theme_mode: cfg.theme_mode.clone(),
         })),
     };
     register_hotkey(&cfg.hotkey, &hotkey_deps);
@@ -2305,6 +2360,16 @@ fn main() -> anyhow::Result<()> {
         .ok()
         .filter(|v| !v.is_empty())
     {
+        // UX-R3: VR determinism — no animations during capture; the capture
+        // pass covers dark AND light palettes (dir + dir/light)
+        let _ = slint::invoke_from_event_loop({
+            let ui_weak = ui.as_weak();
+            move || {
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.global::<launcher_ui::Theme>().set_anim_ms(0);
+                }
+            }
+        });
         visual_scenarios::capture_all(ui.as_weak(), dir.into());
     }
     // single-file legacy snapshot (LAUNCHER_SNAPSHOT=<path.bmp>)

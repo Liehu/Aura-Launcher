@@ -5,7 +5,8 @@
 // the visual canvas is a later polish item.
 
 import { Theme } from "theme.slint";
-import { Button, LineEdit } from "std-widgets.slint";
+import { LineEdit } from "std-widgets.slint";
+import { ThemedButton } from "primitives/themed-button.slint";
 
 export struct EditorRowItem {
     node_id: string,
@@ -96,10 +97,10 @@ export component GraphEditorSurface inherits Rectangle {
             spacing: 6px;
             alignment: start;
             LineEdit { placeholder-text: "node-id"; width: 100px; edited(t) => { root.add-node(t, "cmd:" + t); } }
-            Button { text: "Undo"; enabled: root.can-undo; clicked => { root.undo-requested(); } }
-            Button { text: "Redo"; enabled: root.can-redo; clicked => { root.redo-requested(); } }
-            Button { text: "Export"; clicked => { root.export-requested(); } }
-            Button { text: "Close"; clicked => { root.close-requested(); } }
+            ThemedButton { text: "Undo"; enabled: root.can-undo; clicked => { root.undo-requested(); } }
+            ThemedButton { text: "Redo"; enabled: root.can-redo; clicked => { root.redo-requested(); } }
+            ThemedButton { text: "Export"; clicked => { root.export-requested(); } }
+            ThemedButton { text: "Close"; clicked => { root.close-requested(); } }
         }
         for line-item[root-index] in root.rows: EditorLine {
             item: line-item;

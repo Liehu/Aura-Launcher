@@ -49,6 +49,11 @@
 - Cross-Phase E2E（§33 三条黄金路径）：**ACCEPTED**（159 号）
 - 跨阶段状态矛盾 / 契约-状态矛盾：无已知实例（E2E + 契约映射佐证）
 
+## P3.0 Launcher Experience 1.0（进行中）
+- B0 搜索手感（模糊匹配/防抖/即时答案/设置面）：**ACCEPTED**（161 号）
+- B1 视觉与信息密度（双主题/微动效/元数据/详情面板/自绘控件/VR 双基线）：**ACCEPTED**（162 号）
+- B2 差异化（入口前移/settings:ai/富结果草案）：**IMPLEMENTED → INTEGRATED 待验收**（163 号待办）
+
 ## P3 前置条件（Hard Gate）
 P2.10 出口条件全部满足（见 159 号 Hard Gate 自查表）；P3 可启动。
 BLOCKED-EXTERNAL 项不阻塞 P3（均属发布/分发域，非运行时安全域）。

@@ -681,12 +681,85 @@ impl Default for Core {
 }
 
 /// Build a Command from an indexed file entry (shared by file provider).
+
+/// P3.0-F07: human-readable size (B/KB/MB/GB, one decimal above 10 units).
+fn human_size(size: i64) -> String {
+    let units = ["B", "KB", "MB", "GB", "TB"];
+    let mut v = size.max(0) as f64;
+    let mut u = 0;
+    while v >= 1024.0 && u < units.len() - 1 {
+        v /= 1024.0;
+        u += 1;
+    }
+    if u == 0 {
+        format!("{size} B")
+    } else if v >= 100.0 {
+        format!("{v:.0} {}", units[u])
+    } else {
+        format!("{v:.1} {}", units[u])
+    }
+}
+
+/// P3.0-F07: local-date rendering of a ms-since-epoch timestamp.
+fn format_modified(ms: i64) -> String {
+    if ms <= 0 {
+        return String::new();
+    }
+    // days/civil algorithm (Howard Hinnant) — pure, no TZ database
+    let secs = ms / 1000;
+    let days = secs.div_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let sec_of_day = secs.rem_euclid(86_400);
+    let (hh, mm, ss) = (sec_of_day / 3600, (sec_of_day % 3600) / 60, sec_of_day % 60);
+    format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
+}
+
+
+#[cfg(test)]
+mod p30_meta_tests {
+    use super::*;
+
+    #[test]
+    fn human_size_units() {
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(2048), "2.0 KB");
+        assert_eq!(human_size(1536 * 1024), "1.5 MB");
+        assert_eq!(human_size(200 * 1024 * 1024), "200 MB");
+    }
+
+    #[test]
+    fn format_modified_epoch() {
+        // 2026-01-01T00:00:00Z = 1767225600s
+        let s = format_modified(1_767_225_600_000);
+        assert!(s.starts_with("2026-01-01"), "got {s}");
+        assert!(s.ends_with("00:00:00"));
+        assert_eq!(format_modified(0), "");
+    }
+}
+
 pub fn file_command(f: &IndexedFile) -> Command {
     let kind = ActionKind::Open;
+    // P3.0-F07 metadata: human size + modified date appended to the path
+    // (projection-level: all data comes from the IndexedFile record)
+    let subtitle = format!(
+        "{} · {} · {}",
+        f.path,
+        human_size(f.size),
+        format_modified(f.modified_ms),
+    );
     Command {
         id: f.path.clone(),
         title: f.name.clone(),
-        subtitle: Some(f.path.clone()),
+        subtitle: Some(subtitle),
         icon: None,
         provider_id: "files".into(),
         score: 0.0,

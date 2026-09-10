@@ -5,6 +5,7 @@
 // against the previous run for the visual regression gate.
 
 use crate::snapshot;
+use slint::ComponentHandle as _;
 use launcher_domain::{Category, Command};
 use launcher_ui::WorkflowItem;
 
@@ -385,18 +386,58 @@ pub fn capture_all(
     ui: slint::Weak<launcher_ui::AppWindow>,
     dir: std::path::PathBuf,
 ) {
-    // The capture loop runs on a worker thread; every UI mutation is posted
-    // to the event loop and acked, so the loop must already be running. We
-    // probe with a no-op dispatch until the UI thread responds.
+    // P3.0-F05: two passes — dark (dir) and light (dir/light). The Theme
+    // palette switch is posted to the UI thread before each pass; the pass
+    // loop re-posts itself so both runs share one event loop.
     std::thread::spawn(move || {
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            tracing::error!(?dir, error = %e, "vr.create_dir_failed");
-        }
         for _ in 0..100 {
             if slint::invoke_from_event_loop(|| {}).is_ok() {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // pass completion is awaited via ack channels — the event loop quit
+        // must wait for BOTH passes (each pass takes ≥350ms × 10 scenes)
+        let dark = capture_pass(ui.clone(), dir.clone(), false, true);
+        let _ = dark.recv_timeout(std::time::Duration::from_secs(60));
+        let light = capture_pass(ui.clone(), dir.join("light"), true, true);
+        let _ = light.recv_timeout(std::time::Duration::from_secs(60));
+        let _ = slint::invoke_from_event_loop(|| {
+            let _ = slint::quit_event_loop();
+        });
+    });
+}
+
+/// One VR pass over all frozen states with the given palette. Returns an
+/// ack receiver that fires when every scenario in the pass is captured.
+fn capture_pass(
+    ui: slint::Weak<launcher_ui::AppWindow>,
+    dir: std::path::PathBuf,
+    light: bool,
+    pin_no_anim: bool,
+) -> std::sync::mpsc::Receiver<()> {
+    // The capture loop runs on a worker thread; every UI mutation is posted
+    // to the event loop and acked, so the loop must already be running. We
+    // probe with a no-op dispatch until the UI thread responds.
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            tracing::error!(?dir, error = %e, "vr.create_dir_failed");
+        }
+        // palette + determinism pin (UX-R3): posted before any capture
+        {
+            let (tx, rx) = std::sync::mpsc::channel::<()>();
+            let ui2 = ui.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(w) = ui2.upgrade() {
+                    w.global::<launcher_ui::Theme>().set_light_theme(light);
+                    if pin_no_anim {
+                        w.global::<launcher_ui::Theme>().set_anim_ms(0);
+                    }
+                }
+                let _ = tx.send(());
+            });
+            let _ = rx.recv_timeout(std::time::Duration::from_millis(1000));
         }
         // Show/raise the window ON THE UI THREAD: upgrading the Weak from a
         // worker thread yields None, so a previous off-thread show() silently
@@ -451,8 +492,7 @@ pub fn capture_all(
                 None => tracing::error!(scenario = name, "vr.capture_failed"),
             }
         }
-        let _ = slint::invoke_from_event_loop(|| {
-            let _ = slint::quit_event_loop();
-        });
+        let _ = done_tx.send(());
     });
+    done_rx
 }

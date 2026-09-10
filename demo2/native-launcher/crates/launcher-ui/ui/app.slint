@@ -131,6 +131,8 @@ export component AppWindow inherits Window {
     in property <string> editor-status;
     in property <bool> editor-can-undo;
     in property <bool> editor-can-redo;
+    // P3.0-F14: detail pane (Tab) — pure projection of the selected result
+    in-out property <bool> detail-visible;
     callback editor-closed();
     callback editor-add-node(string, string);
     callback editor-remove-node(string);
@@ -186,7 +188,10 @@ export component AppWindow inherits Window {
                 }
                 accept
             } else if (event.text == Key.Escape) {
-                if (root.panel-visible) {
+                if (root.detail-visible) {
+                    root.detail-visible = false;
+                    accept
+                } else if (root.panel-visible) {
                     root.panel-visible = false;
                     root.panel-closed();
                 } else {
@@ -209,6 +214,11 @@ export component AppWindow inherits Window {
                         root.results[root.selected-index].command-id,
                         root.actions[root.panel-selected].action-id);
                 }
+                accept
+            } else if (event.text == Key.Tab && root.in-main && root.results.length > 0) {
+                // P3.0-F14: toggle the detail pane (pure projection of the
+                // selected result)
+                root.detail-visible = !root.detail-visible;
                 accept
             } else if (event.text == Key.DownArrow) {
                 if (root.panel-visible) {
@@ -350,12 +360,60 @@ export component AppWindow inherits Window {
         }
     }
 
+    // P3.0-F14 detail pane (Tab): read-only projection of the selected
+    // result — title / subtitle / command id / action count
+    detail := Rectangle {
+        y: Theme.padding-window + Theme.row-search + Theme.space-1;
+        width: parent.width - Theme.padding-window * 2;
+        visible: root.detail-visible && root.results.length > 0;
+        background: Theme.bg-surface-elevated;
+        border-width: 1px;
+        border-color: Theme.border-subtle;
+        border-radius: Theme.radius-large;
+        opacity: root.detail-visible ? 1.0 : 0.0;
+        animate opacity { duration: Theme.anim-ms * 1ms; }
+        VerticalLayout {
+            padding: Theme.spacing-md;
+            spacing: Theme.spacing-xs;
+            Text {
+                text: root.results.length > root.selected-index
+                    ? root.results[root.selected-index].title : "";
+                color: Theme.text-primary;
+                font-size: Theme.type-title;
+                overflow: elide;
+            }
+            Text {
+                text: root.results.length > root.selected-index
+                    ? root.results[root.selected-index].subtitle : "";
+                color: Theme.text-secondary;
+                font-size: Theme.type-secondary;
+                overflow: elide;
+            }
+            Text {
+                text: root.results.length > root.selected-index
+                    ? "id: " + root.results[root.selected-index].command-id
+                        + "   ·   actions: " + root.actions.length
+                    : "";
+                color: Theme.text-tertiary;
+                font-size: Theme.type-caption;
+                overflow: elide;
+            }
+            Text {
+                text: "Tab to close";
+                color: Theme.text-tertiary;
+                font-size: Theme.type-caption;
+            }
+        }
+    }
+
     // P2.6-E03 Graph Editor surface: list VIEW over host-projected rows;
     // all logic lives in the host EditorSurface (launcher-app)
     ed := GraphEditorSurface {
         y: parent.height - Theme.padding-window - root.status-height - self.height;
         width: parent.width;
         visible: root.editor-visible;
+        opacity: root.editor-visible ? 1.0 : 0.0;
+        animate opacity { duration: Theme.anim-ms * 1ms; }
         rows: root.editor-rows;
         status-text: root.editor-status;
         can-undo: root.editor-can-undo;
@@ -376,6 +434,9 @@ export component AppWindow inherits Window {
         y: parent.height - Theme.padding-window - root.status-height - self.height;
         width: parent.width;
         visible: root.wf-visible;
+        // P3.0-F13: surface fade-in on show (Theme.anim-ms, 0 in snapshots)
+        opacity: root.wf-visible ? 1.0 : 0.0;
+        animate opacity { duration: Theme.anim-ms * 1ms; }
         items: root.wf-items;
         title: root.wf-title;
         status: root.wf-status;

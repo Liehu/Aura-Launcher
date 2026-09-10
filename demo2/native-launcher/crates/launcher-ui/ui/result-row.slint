@@ -22,6 +22,8 @@ export component ResultRow inherits Rectangle {
 
     height: Theme.row-main;
     background: selected ? Theme.bg-selected : transparent;
+    // P3.0-F13: selection transition (≤80ms; snapshot mode pins 0ms)
+    animate background { duration: Theme.anim-ms * 2ms / 3; }
 
     HorizontalLayout {
         padding-left: Theme.space-3;

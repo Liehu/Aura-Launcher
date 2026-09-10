@@ -86,6 +86,7 @@
 | `159-p210-closure.md` | **P2.10 Batch 3 + 收口**：Runtime Recovery Probe + Cross-Phase E2E（§33 三条黄金路径）+ State/Generation 契约 + docs/phase 权威层 | ✅ 887 tests |
 | `160-p210-handbook-index.md` | **P2.10 扫尾**：HANDBOOK 索引化（452→204 行，状态事实移交 docs/phase）+ 契约/红线/命令刷新；G20 ACCEPTED | ✅ 887 tests |
 | `161-p30-b0-search-feel.md` | **P3.0 Batch B0**：搜索手感——评分化模糊匹配（拼音双键）+ 70ms 防抖 + 即时算术答案 + 原生设置面；模糊 P95 2.97ms | ✅ 904 tests |
+| `162-p30-b1-visual-density.md` | **P3.0 Batch B1**：视觉与信息密度——双主题调色板（VR 双基线确定性验证）+ 微动效 + 文件元数据 + Tab 详情面板 + ThemedButton | ✅ 906 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

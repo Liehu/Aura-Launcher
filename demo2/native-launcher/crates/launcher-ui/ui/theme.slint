@@ -10,38 +10,47 @@ export global Theme {
     // 0.25, clamped [1.0, 2.0]); every size token below scales with it, so
     // high-resolution displays get a proportionally larger UI.
     in-out property <float> ui-scale: 1.0;
+
+    // P3.0-F05: theme mode switch. false = Dark (frozen v0.1 palette —
+    // VR-001..010 dark baselines depend on the literals below byte-for-byte),
+    // true = Light palette. The host sets this from config `theme_mode`.
+    in-out property <bool> light-theme: false;
+    // P3.0-F13: master motion duration in ms (0 = animations disabled —
+    // snapshot mode pins this to 0 for VR determinism).
+    in-out property <int> anim-ms: 120;
+
     // ---- Surface (Spec §2.1) ----
-    out property <color> bg-canvas: #0B1017;             // launcher background
-    out property <color> bg-surface: #111822;            // main content surface
-    out property <color> bg-surface-elevated: #16202C;   // elevated / hover surface
-    out property <color> bg-input: #0F1721;              // search box
-    out property <color> bg-selected: #173F73;           // selected row
-    out property <color> bg-selected-hover: #1B4A86;     // selected + hover
-    out property <color> bg-disabled: #10161E;           // disabled row
+    out property <color> bg-canvas: light-theme ? #F7F9FC : #0B1017;             // launcher background
+    out property <color> bg-surface: light-theme ? #FFFFFF : #111822;            // main content surface
+    out property <color> bg-surface-elevated: light-theme ? #FFFFFF : #16202C;   // elevated / hover surface
+    out property <color> bg-input: light-theme ? #FFFFFF : #0F1721;              // search box
+    out property <color> bg-selected: light-theme ? #D6E8FF : #173F73;           // selected row
+    out property <color> bg-selected-hover: light-theme ? #C4DEFF : #1B4A86;     // selected + hover
+    out property <color> bg-disabled: light-theme ? #F0F2F5 : #10161E;           // disabled row
 
     // ---- Border (Spec §2.2) ----
-    out property <color> border-default: #26323F;
-    out property <color> border-subtle: #1E2833;
-    out property <color> border-focus: #4DA3FF;          // keyboard focus
-    out property <color> border-warning: #FFB547;        // confirmation
-    out property <color> border-error: #FF5C5C;
+    out property <color> border-default: light-theme ? #D8DEE6 : #26323F;
+    out property <color> border-subtle: light-theme ? #E6EAF0 : #1E2833;
+    out property <color> border-focus: light-theme ? #2E7FE8 : #4DA3FF;          // keyboard focus
+    out property <color> border-warning: light-theme ? #B87400 : #FFB547;        // confirmation
+    out property <color> border-error: light-theme ? #D63A3A : #FF5C5C;
 
     // ---- Text (Spec §2.3) ----
-    out property <color> text-primary: #E6ECF2;
-    out property <color> text-secondary: #A6B0BF;
-    out property <color> text-tertiary: #778395;
-    out property <color> text-disabled: #5A6470;
-    out property <color> text-inverse: #081019;          // on accent background
+    out property <color> text-primary: light-theme ? #1A2430 : #E6ECF2;
+    out property <color> text-secondary: light-theme ? #55606E : #A6B0BF;
+    out property <color> text-tertiary: light-theme ? #7A8595 : #778395;
+    out property <color> text-disabled: light-theme ? #A5ADBA : #5A6470;
+    out property <color> text-inverse: light-theme ? #FFFFFF : #081019;          // on accent background
 
     // ---- Accent / Semantic (Spec §2.4) ----
     // accent-primary may be overridden by user config (theme_color) at the
     // injection point in launcher-app; #4DA3FF is the Dark theme default.
-    out property <color> accent-primary: #4DA3FF;
-    out property <color> accent-primary-hover: #63B0FF;
-    out property <color> semantic-success: #36C77A;
-    out property <color> semantic-warning: #FFB547;
-    out property <color> semantic-error: #FF5C5C;
-    out property <color> semantic-info: #5AA9FF;
+    out property <color> accent-primary: light-theme ? #2E7FE8 : #4DA3FF;
+    out property <color> accent-primary-hover: light-theme ? #4A93F0 : #63B0FF;
+    out property <color> semantic-success: light-theme ? #1FA35C : #36C77A;
+    out property <color> semantic-warning: light-theme ? #B87400 : #FFB547;
+    out property <color> semantic-error: light-theme ? #D63A3A : #FF5C5C;
+    out property <color> semantic-info: light-theme ? #2E7FE8 : #5AA9FF;
 
     // ---- Radius (Spec §5) ----
     out property <length> radius-small: 4px;   // badge / shortcut
@@ -103,12 +112,12 @@ export global Theme {
 
     // ---- State palette (§40): status colors reserved for StateBadge /
     // StateSymbol rendering; components must not pick ad-hoc status colors.
-    out property <color> state-ready: #5AA9FF;
-    out property <color> state-disabled: #5A6470;
-    out property <color> state-running: #4DA3FF;
-    out property <color> state-success: #36C77A;
-    out property <color> state-warning: #FFB547;
-    out property <color> state-error: #FF5C5C;
+    out property <color> state-ready: light-theme ? #2E7FE8 : #5AA9FF;
+    out property <color> state-disabled: light-theme ? #A5ADBA : #5A6470;
+    out property <color> state-running: light-theme ? #2E7FE8 : #4DA3FF;
+    out property <color> state-success: light-theme ? #1FA35C : #36C77A;
+    out property <color> state-warning: light-theme ? #B87400 : #FFB547;
+    out property <color> state-error: light-theme ? #D63A3A : #FF5C5C;
 
     // ---- Panel widths (§40): launcher-surface widths per context ----
     out property <length> panel-width-main: 620px * ui-scale;
