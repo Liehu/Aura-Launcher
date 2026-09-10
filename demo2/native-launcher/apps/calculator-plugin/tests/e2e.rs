@@ -35,6 +35,16 @@ fn calculator_full_contract_chain() {
     assert_eq!(cmds[0].title, "= 80");
     assert_eq!(cmds[0].category, launcher_domain::Category::Plugin);
 
+    // P3.2: the rich calculator page is stored under the stable command id
+    let rich = launcher_domain::rich::lookup(&cmds[0].id).expect("rich page stored");
+    let lines = rich.render_lines();
+    assert!(lines.iter().any(|l| l.contains("= 80")), "result line: {lines:?}");
+    assert!(lines.iter().any(|l| l.contains("expression: 12+34*2")));
+    // non-math query has no rich payload and must not clobber the stored page
+    let _ = h.query("hello").unwrap();
+    let rich = launcher_domain::rich::lookup(&cmds[0].id).expect("rich page still stored");
+    assert!(rich.render_lines().iter().any(|l| l.contains("= 80")));
+
     // non-math query still returns the help item
     let cmds = h.query("hello").unwrap();
     assert_eq!(cmds.len(), 1);
