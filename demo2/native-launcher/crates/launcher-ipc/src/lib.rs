@@ -107,6 +107,87 @@ pub mod method {
     pub const EXECUTE_ACTION: &str = "execute_action";
 }
 
+/// P3-UI.0 (P3UI-D): interactive tool methods (spec §41-§47). Same
+/// NDJSON/JSON-RPC 2.0 transport — no second wire protocol.
+pub mod tool_method {
+    pub const TOOL_LIST: &str = "tool.list";
+    pub const TOOL_OPEN: &str = "tool.open";
+    pub const TOOL_CLOSE: &str = "tool.close";
+    pub const TOOL_EVENT: &str = "tool.event";
+    pub const TOOL_UPDATE: &str = "tool.update";
+    pub const TOOL_CANCEL: &str = "tool.cancel";
+}
+
+pub mod tool_params {
+    use serde::{Deserialize, Serialize};
+
+    /// `tool.list` request params (spec §42).
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolListParams {
+        pub request_id: String,
+    }
+
+    /// `tool.list` result.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolListResult {
+        pub request_id: String,
+        pub tools: Vec<serde_json::Value>,
+    }
+
+    /// `tool.open` request params (spec §43): session_id is HOST-generated.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolOpenParams {
+        pub session_id: String,
+        pub tool_id: String,
+        #[serde(default)]
+        pub context: serde_json::Value,
+        #[serde(default)]
+        pub initial_input: serde_json::Value,
+    }
+
+    /// `tool.open` result: echoed session + UI generation + UI schema.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolOpenResult {
+        pub session_id: String,
+        pub ui_generation: u64,
+        pub ui: serde_json::Value,
+    }
+
+    /// `tool.event` request params (spec §44/§28).
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolEventParams {
+        pub session_id: String,
+        pub event_id: String,
+        pub node_id: String,
+        pub event: String,
+        #[serde(default)]
+        pub value: serde_json::Value,
+    }
+
+    /// `tool.update` notification params — plugin → host (spec §45).
+    /// `base_generation` MUST equal the host's current generation
+    /// (no implicit merge); mismatches are rejected.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolUpdateParams {
+        pub session_id: String,
+        pub base_generation: u64,
+        pub update: serde_json::Value,
+    }
+
+    /// `tool.close` / `tool.cancel` params (spec §46/§47).
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolCloseParams {
+        pub session_id: String,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ToolCancelParams {
+        pub session_id: String,
+        #[serde(default)]
+        pub event_id: Option<String>,
+    }
+}
+
 /// Params of the `execute_action` method (MVP4.0). `execution_id` is
 /// host-generated from its own sequence and MUST be echoed, exactly like
 /// `query_id` for queries — the two id spaces never mix.

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aura://schemas/p3-ui/tool-reference.schema.json",
+  "type": "object",
+  "description": "What a Workflow stores to reference a tool function (P3UI-G): logical identity only - never a session/node/effect.",
+  "required": [
+    "plugin_id",
+    "tool_id",
+    "function_id"
+  ],
+  "properties": {
+    "plugin_id": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "tool_id": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "function_id": {
+      "type": "string",
+      "maxLength": 128
+    }
+  },
+  "additionalProperties": false
+}

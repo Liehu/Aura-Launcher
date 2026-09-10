@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aura://schemas/p3-ui/ui-schema.schema.json",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "root"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "root": {
+      "$ref": "ui-node.schema.json"
+    }
+  },
+  "additionalProperties": false
+}

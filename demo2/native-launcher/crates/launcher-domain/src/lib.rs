@@ -7,6 +7,7 @@ pub mod execution_semantics;
 pub mod pinyin;
 pub mod pinyin_table;
 pub mod rich;
+pub mod tool;
 pub mod failure;
 pub mod file_change;
 pub mod icon;
@@ -477,6 +478,11 @@ pub struct PluginManifest {
     /// manifest valid.
     #[serde(default, rename = "window")]
     pub window_ui: bool,
+    /// P3-UI: interactive tools declared by this plugin (P3UI-B). Each
+    /// entry is validated fail-closed at load; unknown/invalid tools are
+    /// dropped with a WARN.
+    #[serde(default)]
+    pub tools: Vec<crate::tool::ToolDefinition>,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
     #[serde(default = "default_idle_timeout_ms")]
@@ -532,6 +538,12 @@ impl PluginManifest {
             if v != 1 {
                 return Err(ManifestError(format!("unsupported schema_version: {v}")));
             }
+        }
+        // P3UI-B: declared tools are validated fail-closed (deterministic,
+        // bounded, version-aware). An invalid tool rejects the manifest.
+        for t in &self.tools {
+            t.validate()
+                .map_err(|e| ManifestError(format!("tool {}: {e}", t.id.as_str())))?;
         }
         if let Some(rt) = &self.runtime {
             if rt.kind != "process" && rt.kind != "python" {

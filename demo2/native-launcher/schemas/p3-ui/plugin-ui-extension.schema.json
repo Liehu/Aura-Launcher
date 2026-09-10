@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aura://schemas/p3-ui/plugin-ui-extension.schema.json",
+  "title": "P3-UI plugin manifest extension",
+  "type": "object",
+  "properties": {
+    "window": {
+      "type": "boolean",
+      "description": "Plugin declares it opens its own top-level UI window (P3.1). Opt-in; undeclared plugins are never enumerated by window management."
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "tool.schema.json" }
+    }
+  },
+  "additionalProperties": true
+}

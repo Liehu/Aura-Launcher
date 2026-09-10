@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aura://schemas/p3-ui/tool.schema.json",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "entry",
+    "schema_version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9._-]+$",
+      "maxLength": 128
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "category": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "icon": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "interactive"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

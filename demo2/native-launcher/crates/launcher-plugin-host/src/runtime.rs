@@ -90,6 +90,7 @@ mod tests {
             name: "T".into(),
             version: None,
             window_ui: false,
+            tools: vec![],
             api_version: "0.1".into(),
             schema_version: Some(1),
             executable: String::new(),

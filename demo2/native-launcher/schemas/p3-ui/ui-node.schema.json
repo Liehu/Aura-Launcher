@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aura://schemas/p3-ui/ui-node.schema.json",
+  "type": "object",
+  "required": [
+    "type",
+    "id"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "container",
+        "section",
+        "text",
+        "markdown",
+        "icon",
+        "image",
+        "text_field",
+        "password_field",
+        "text_area",
+        "dropdown",
+        "checkbox",
+        "radio",
+        "toggle",
+        "number_input",
+        "button",
+        "action_button",
+        "list",
+        "list_item",
+        "detail",
+        "key_value",
+        "progress",
+        "status",
+        "badge",
+        "separator",
+        "spacer"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "$ref": "ui-node.schema.json"
+      }
+    }
+  },
+  "additionalProperties": true
+}

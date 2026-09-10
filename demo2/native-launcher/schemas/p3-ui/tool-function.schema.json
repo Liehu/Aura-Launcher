@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aura://schemas/p3-ui/tool-function.schema.json",
+  "type": "object",
+  "required": [
+    "id",
+    "input_schema",
+    "output_schema",
+    "deterministic",
+    "side_effect",
+    "required_capabilities"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "input_schema": {
+      "type": "object"
+    },
+    "output_schema": {
+      "type": "object"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "side_effect": {
+      "type": "boolean"
+    },
+    "required_capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 128
+      },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}
