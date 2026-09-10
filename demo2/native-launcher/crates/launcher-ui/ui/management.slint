@@ -18,6 +18,14 @@ export struct WindowEntry {
     title: string,
     plugin-id: string,
     pinned: bool,
+    desktop: bool,
+    // P3.1-B2: follow target (title) when this window is follow-pinned
+    follow-target: string,
+}
+
+export struct TargetEntry {
+    hwnd: string,
+    title: string,
 }
 
 export struct WorkflowEntry {
@@ -42,6 +50,10 @@ export component ManagementWindow inherits Window {
     in property <[PluginEntry]> plugins;
     in property <[WorkflowEntry]> workflows;
     in property <[WindowEntry]> windows;
+    // P3.1-B2: running windows the user may pick as a follow target
+    in property <[TargetEntry]> targets;
+    in-out property <string> follow-pick-hwnd;
+    in-out property <string> follow-pick-title;
     in property <string> about-text;
 
     callback tab-selected(int);
@@ -49,6 +61,9 @@ export component ManagementWindow inherits Window {
     callback plugin-toggled(string /* id */, bool /* enable */);
     callback workflow-deleted(string /* path */);
     callback pin-toggled(string /* hwnd */, bool /* pin */);
+    callback desktop-pin-toggled(string /* hwnd */, bool /* desktop */);
+    callback follow-set(string /* pin hwnd */, string /* target hwnd */, string /* target title */);
+    callback follow-clear(string /* pin hwnd */);
     callback closed();
 
 
@@ -220,8 +235,9 @@ export component ManagementWindow inherits Window {
             }
             for w in root.windows: Rectangle {
                 height: 48px;
-                background: Theme.bg-surface;
+                background: root.follow-pick-hwnd == w.hwnd ? Theme.bg-selected : Theme.bg-surface;
                 border-radius: Theme.radius-md;
+                animate background { duration: Theme.anim-ms * 2ms / 3; }
                 HorizontalLayout {
                     padding-left: Theme.spacing-md;
                     padding-right: Theme.spacing-md;
@@ -230,13 +246,63 @@ export component ManagementWindow inherits Window {
                     VerticalLayout {
                         alignment: center;
                         Text { text: w.title; color: Theme.text-primary; font-size: Theme.type-body; overflow: elide; }
-                        Text { text: "plugin: " + w.plugin-id; color: Theme.text-tertiary; font-size: Theme.type-caption; overflow: elide; }
+                        Text {
+                            text: "plugin: " + w.plugin-id + (w.follow-target == "" ? "" : "  ·  following: " + w.follow-target);
+                            color: Theme.text-tertiary;
+                            font-size: Theme.type-caption;
+                            overflow: elide;
+                        }
                     }
                     Rectangle { horizontal-stretch: 1; }
+                    TouchArea {
+                        clicked => { root.follow-pick-hwnd = w.hwnd; }
+                    }
                     ThemedButton {
-                        text: w.pinned ? "Unpin (topmost)" : "Pin on top";
-                        width: 140px;
+                        text: w.pinned ? "Unpin" : "Pin on top";
+                        width: 110px;
                         clicked => { root.pin-toggled(w.hwnd, !w.pinned); }
+                    }
+                    ThemedButton {
+                        text: w.follow-target == "" ? "Follow…" : "Unfollow";
+                        width: 100px;
+                        clicked => {
+                            if (w.follow-target == "") {
+                                root.follow-set(w.hwnd, root.follow-pick-hwnd, root.follow-pick-title);
+                            } else {
+                                root.follow-clear(w.hwnd);
+                            }
+                        }
+                    }
+                    ThemedButton {
+                        text: w.desktop ? "Unpin desktop" : "To desktop";
+                        width: 120px;
+                        clicked => { root.desktop-pin-toggled(w.hwnd, !w.desktop); }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border-subtle; }
+            Text {
+                text: root.follow-pick-hwnd == ""
+                    ? "Select a plugin window above, then pick a running window as the follow target."
+                    : "Pick a running window as the follow target for the selected plugin window:";
+                color: Theme.text-secondary;
+                font-size: Theme.type-caption;
+                wrap: word-wrap;
+            }
+            for t in root.targets: Rectangle {
+                height: 36px;
+                background: Theme.bg-surface;
+                border-radius: Theme.radius-md;
+                HorizontalLayout {
+                    padding-left: Theme.spacing-md;
+                    padding-right: Theme.spacing-md;
+                    alignment: start;
+                    Text { text: t.title; color: Theme.text-secondary; font-size: Theme.type-secondary; vertical-alignment: center; overflow: elide; }
+                    Rectangle { horizontal-stretch: 1; }
+                    ThemedButton {
+                        text: "Use as target";
+                        width: 120px;
+                        clicked => { root.follow-pick-title = t.title; }
                     }
                 }
             }

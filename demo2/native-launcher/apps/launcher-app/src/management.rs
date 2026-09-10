@@ -22,6 +22,10 @@ static WINDOW: std::sync::OnceLock<Mutex<Option<Weak<launcher_ui::ManagementWind
     std::sync::OnceLock::new();
 static STATE: std::sync::OnceLock<Arc<Mutex<AppState>>> = std::sync::OnceLock::new();
 
+/// P3.1-B3 (EXPERIMENTAL): desktop-pinned plugin windows (WorkerW re-parent).
+static DESKTOP: std::sync::OnceLock<Mutex<std::collections::HashSet<isize>>> =
+    std::sync::OnceLock::new();
+
 fn window_slot() -> &'static Mutex<Option<Weak<launcher_ui::ManagementWindow>>> {
     WINDOW.get_or_init(|| Mutex::new(None))
 }
@@ -111,6 +115,64 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
             }
         });
     });
+    // P3.1-B2: follow-set / follow-clear (target-anchored topmost)
+    let cb_set = weak.clone();
+    let cb_clear = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |w| {
+        w.on_follow_set(move |pin, target, title| {
+            let Ok(pin) = pin.to_string().parse::<isize>() else { return };
+            let Ok(target) = target.to_string().parse::<isize>() else { return };
+            match crate::win_platform::follow_set(pin, target, title.to_string()) {
+                Ok(()) => {
+                    tracing::info!(pin, target, "management.follow_set");
+                    if let Some(w) = cb_set.upgrade() {
+                        refresh(&w);
+                    }
+                }
+                Err(e) => post_status(&cb_set, &format!("⚠ follow failed: {e}")),
+            }
+        });
+        w.on_follow_clear(move |pin| {
+            let Ok(pin) = pin.to_string().parse::<isize>() else { return };
+            if crate::win_platform::follow_clear(pin) {
+                tracing::info!(pin, "management.follow_cleared");
+                if let Some(w) = cb_clear.upgrade() {
+                    refresh(&w);
+                }
+            }
+        });
+    });
+    // P3.1-B3: desktop pin (WorkerW re-parent, EXPERIMENTAL)
+    let cb_desk = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |w| {
+        w.on_desktop_pin_toggled(move |hwnd, desktop| {
+            let Ok(h) = hwnd.to_string().parse::<isize>() else { return };
+            let res = if desktop {
+                crate::win_platform::pin_desktop(h)
+            } else {
+                crate::win_platform::unpin_desktop(h)
+            };
+            let Some(w) = cb_desk.upgrade() else { return };
+            match res {
+                Ok(()) => {
+                    if let Some(set) = DESKTOP.get() {
+                        if let Ok(mut m) = set.lock() {
+                            if desktop {
+                                m.insert(h);
+                            } else {
+                                m.remove(&h);
+                            }
+                        }
+                    }
+                    refresh(&w);
+                }
+                Err(e) => {
+                    tracing::warn!(hwnd = h, error = %e, "desktop.pin_failed");
+                    refresh(&w);
+                }
+            }
+        });
+    });
     let cb = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |w| {
         w.on_closed(move || {
@@ -126,13 +188,7 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
             let Ok(h) = hwnd.to_string().parse::<isize>() else { return };
             match crate::win_platform::set_topmost(h, pin) {
                 Ok(()) => {
-                    if let Ok(mut m) = pinned_slot().lock() {
-                        if pin {
-                            m.insert(h, true);
-                        } else {
-                            m.remove(&h);
-                        }
-                    }
+                    crate::win_platform::pin_mark(h, pin);
                     tracing::info!(hwnd = h, pin, "management.pin_toggled");
                     if let Some(w) = cb.upgrade() {
                         refresh(&w);
@@ -149,15 +205,6 @@ fn post_status(ui: &Weak<launcher_ui::ManagementWindow>, msg: &str) {
     // general page value column refresh; errors go to the log + popup.
     tracing::info!(msg, "management.action");
     let _ = ui;
-}
-
-/// P3.1-B1: pinned plugin-window handles (hwnd → topmost). Managed by the
-/// host; Unpin restores NOTOPMOST.
-static PINNED: std::sync::OnceLock<Mutex<std::collections::HashMap<isize, bool>>> =
-    std::sync::OnceLock::new();
-
-fn pinned_slot() -> &'static Mutex<std::collections::HashMap<isize, bool>> {
-    PINNED.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 
 /// Rebuild and push all models onto the window (UI thread).
@@ -241,26 +288,54 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
     // P3.1-B1: discovered plugin windows (pid-boundary: only pids the host
     // spawned, and only manifests that declared "window": true)
     let mut windows: Vec<launcher_ui::WindowEntry> = Vec::new();
+    // P3.1-B2: running windows the user may pick as a follow target
+    // (everything visible and titled EXCEPT our own process — the user
+    // explicitly picks targets, so this list is user-authorized data)
+    let mut targets: Vec<launcher_ui::TargetEntry> = Vec::new();
+    {
+        let own = std::process::id();
+        for winfo in crate::win_platform::enumerate_visible_windows() {
+            if winfo.pid == own {
+                continue;
+            }
+            targets.push(launcher_ui::TargetEntry {
+                hwnd: format!("{}", winfo.hwnd).into(),
+                title: winfo.title.clone().into(),
+            });
+        }
+    }
+    let follow = crate::win_platform::follow_current();
+    let desktop_set = DESKTOP.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
     for (id, pid, window_ui) in st.core.running_plugins() {
         if !window_ui {
             continue;
         }
         for winfo in crate::win_platform::visible_windows_of_pid(pid) {
-            let pinned = pinned_slot()
+            let pinned = crate::win_platform::pin_is_marked(winfo.hwnd);
+            let desktop = desktop_set
                 .lock()
-                .ok()
-                .map(|m| m.contains_key(&winfo.hwnd))
+                .map(|m| m.contains(&winfo.hwnd))
                 .unwrap_or(false);
+            let follow_target = follow
+                .as_ref()
+                .filter(|(pin, _, _)| *pin == winfo.hwnd)
+                .map(|(_, _, title)| title.clone())
+                .unwrap_or_default();
             windows.push(launcher_ui::WindowEntry {
                 hwnd: format!("{}", winfo.hwnd).into(),
                 title: winfo.title.into(),
                 plugin_id: id.clone().into(),
                 pinned,
+                desktop,
+                follow_target: follow_target.into(),
             });
         }
     }
     w.set_windows(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
         windows,
+    ))));
+    w.set_targets(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
+        targets,
     ))));
 
     w.set_about_text(
