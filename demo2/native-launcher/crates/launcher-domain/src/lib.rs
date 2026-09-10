@@ -470,6 +470,12 @@ pub struct PluginManifest {
     pub runtime: Option<RuntimeSpec>,
     #[serde(default)]
     pub capabilities: Vec<Capability>,
+    /// P3.1-B1: the plugin declares it opens its OWN top-level UI window.
+    /// Opt-in — only declaring plugins are enumerated by the launcher's
+    /// window management (pin/topmost); serde default keeps every existing
+    /// manifest valid.
+    #[serde(default, rename = "window")]
+    pub window_ui: bool,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
     #[serde(default = "default_idle_timeout_ms")]

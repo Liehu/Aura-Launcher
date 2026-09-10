@@ -29,6 +29,14 @@ pub trait Provider: Send {
     fn id(&self) -> &str;
     fn query(&mut self, q: &QueryContext) -> Vec<Command>;
 
+    /// P3.1-B1: the plugin's manifest id + OS pid + whether it declared a
+    /// UI window, when this provider has a LIVE plugin process (window
+    /// management discovery). Default None — only the plugin provider
+    /// overrides it.
+    fn running_plugin(&self) -> Option<(String, u32, bool)> {
+        None
+    }
+
     /// Manifest id when this provider fronts an external plugin (MVP4.0).
     fn plugin_identity(&self) -> Option<&str> {
         None
@@ -456,6 +464,15 @@ impl Core {
         });
         scored.truncate(limit.min(MAX_RESULTS));
         scored
+    }
+
+    /// P3.1-B1: live plugin processes (manifest id, pid, window_ui) — the
+    /// window-management discovery key (pid-boundary hard limit).
+    pub fn running_plugins(&mut self) -> Vec<(String, u32, bool)> {
+        self.providers
+            .iter_mut()
+            .filter_map(|p| p.running_plugin())
+            .collect()
     }
 
     pub fn action_catalog(&mut self) -> Vec<Command> {

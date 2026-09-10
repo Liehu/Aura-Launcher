@@ -161,19 +161,15 @@ mod tests {
     #[test]
     fn retry_matrix() {
         use CommandResult::*;
-        use EffectState::*;
-        #[allow(unused_imports)]
         use EffectState::Unknown as EUnknown;
-        #[allow(unused_imports)]
-        use CommandResult::Unknown as RUnknown;
         // settled success: forbidden regardless
         assert_eq!(retry_decision(Succeeded, EffectState::Completed, true), RetryDecision::Forbidden);
         assert_eq!(retry_decision(Succeeded, EffectState::NotStarted, false), RetryDecision::Forbidden);
         // unknown effect: idempotency-gated (incl. Cancelled+Unknown!)
-        assert_eq!(retry_decision(RUnknown, EUnknown, false), RetryDecision::Forbidden);
+        assert_eq!(retry_decision(CommandResult::Unknown, EUnknown, false), RetryDecision::Forbidden);
         assert_eq!(retry_decision(Timeout, EUnknown, false), RetryDecision::Forbidden);
         assert_eq!(retry_decision(Cancelled, EUnknown, false), RetryDecision::Forbidden);
-        assert_eq!(retry_decision(RUnknown, EUnknown, true), RetryDecision::Allowed);
+        assert_eq!(retry_decision(CommandResult::Unknown, EUnknown, true), RetryDecision::Allowed);
         assert_eq!(retry_decision(Timeout, EUnknown, true), RetryDecision::Allowed);
         assert_eq!(retry_decision(Cancelled, EUnknown, true), RetryDecision::Allowed);
         // in-flight: never re-run

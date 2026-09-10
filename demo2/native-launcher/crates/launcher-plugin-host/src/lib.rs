@@ -219,6 +219,13 @@ impl PluginHandle {
         Ok(handle)
     }
 
+    /// P3.1-B1: OS pid of the spawned plugin process. The launcher's
+    /// window management enumerates plugin-owned top-level windows by this
+    /// pid (strict boundary: no other process's windows are ever touched).
+    pub fn pid(&self) -> u32 {
+        self.session.pid()
+    }
+
     /// `initialize` handshake: negotiate the protocol version (§4).
     fn initialize(&mut self) -> Result<(), PluginError> {
         let timeout = Duration::from_millis(self.manifest.timeout_ms.min(2000));
@@ -579,6 +586,38 @@ mod tests {
             "timeout_ms": timeout_ms
         }))
         .unwrap()
+    }
+
+    /// P3.1-B1 WIN-1: a live plugin process exposes a nonzero pid. The
+    /// pid names a real OS process while the handle lives. Python-gated
+    /// (needs a protocol-speaking fixture), like the crash soak.
+    #[test]
+    fn b1_pid_exposed_for_live_plugin() {
+        let Some(python) = std::env::var("LAUNCHER_PYTHON").ok().filter(|v| !v.is_empty())
+        else {
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("nl_p31_pid_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("toggler.py"),
+            "import json,sys\nfor l in sys.stdin:\n    r=json.loads(l)\n    sys.stdout.write(json.dumps({\"jsonrpc\":\"2.0\",\"id\":r[\"id\"],\"result\":{\"protocol_version\":r[\"params\"][\"protocol_version\"]}})+\"\\n\"); sys.stdout.flush()\n",
+        )
+        .unwrap();
+        let m: PluginManifest = serde_json::from_value(serde_json::json!({
+            "id": "p31.pid",
+            "name": "Pid",
+            "window": true,
+            "runtime": { "type": "python", "executable": "toggler.py" },
+            "timeout_ms": 3000
+        }))
+        .unwrap();
+        let handle = PluginHandle::spawn(m, &dir).unwrap();
+        assert!(handle.pid() > 0, "live plugin must expose its pid");
+        assert!(handle.manifest().window_ui, "window declaration parsed");
+        drop(handle);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

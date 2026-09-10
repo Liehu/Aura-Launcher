@@ -191,6 +191,16 @@ impl Provider for PluginProvider {
         "plugin"
     }
 
+    fn running_plugin(&self) -> Option<(String, u32, bool)> {
+        self.handle.as_ref().map(|h| {
+            (
+                self.manifest.id.clone(),
+                h.pid(),
+                self.manifest.window_ui,
+            )
+        })
+    }
+
     fn plugin_identity(&self) -> Option<&str> {
         Some(self.manifest.id.as_str())
     }

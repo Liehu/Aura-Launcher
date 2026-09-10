@@ -119,6 +119,29 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
             }
         });
     });
+    // P3.1-B1: pin/unpin a discovered plugin window (topmost toggle)
+    let cb = weak.clone();
+    let _ = weak.upgrade_in_event_loop(move |w| {
+        w.on_pin_toggled(move |hwnd, pin| {
+            let Ok(h) = hwnd.to_string().parse::<isize>() else { return };
+            match crate::win_platform::set_topmost(h, pin) {
+                Ok(()) => {
+                    if let Ok(mut m) = pinned_slot().lock() {
+                        if pin {
+                            m.insert(h, true);
+                        } else {
+                            m.remove(&h);
+                        }
+                    }
+                    tracing::info!(hwnd = h, pin, "management.pin_toggled");
+                    if let Some(w) = cb.upgrade() {
+                        refresh(&w);
+                    }
+                }
+                Err(e) => post_status(&cb, &format!("⚠ pin failed: {e}")),
+            }
+        });
+    });
 }
 
 fn post_status(ui: &Weak<launcher_ui::ManagementWindow>, msg: &str) {
@@ -126,6 +149,15 @@ fn post_status(ui: &Weak<launcher_ui::ManagementWindow>, msg: &str) {
     // general page value column refresh; errors go to the log + popup.
     tracing::info!(msg, "management.action");
     let _ = ui;
+}
+
+/// P3.1-B1: pinned plugin-window handles (hwnd → topmost). Managed by the
+/// host; Unpin restores NOTOPMOST.
+static PINNED: std::sync::OnceLock<Mutex<std::collections::HashMap<isize, bool>>> =
+    std::sync::OnceLock::new();
+
+fn pinned_slot() -> &'static Mutex<std::collections::HashMap<isize, bool>> {
+    PINNED.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 
 /// Rebuild and push all models onto the window (UI thread).
@@ -145,7 +177,7 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
     )));
 
     let Some(state) = STATE.get() else { return };
-    let st = state.lock().expect("state lock");
+    let mut st = state.lock().expect("state lock");
     let mut plugins: Vec<launcher_ui::PluginEntry> = Vec::new();
     // enumerate manifests from the plugins dir through the registry state
     if let Ok(entries) = std::fs::read_dir(crate::data_dir().join("plugins")) {
@@ -204,6 +236,31 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
     }
     w.set_workflows(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
         workflows,
+    ))));
+
+    // P3.1-B1: discovered plugin windows (pid-boundary: only pids the host
+    // spawned, and only manifests that declared "window": true)
+    let mut windows: Vec<launcher_ui::WindowEntry> = Vec::new();
+    for (id, pid, window_ui) in st.core.running_plugins() {
+        if !window_ui {
+            continue;
+        }
+        for winfo in crate::win_platform::visible_windows_of_pid(pid) {
+            let pinned = pinned_slot()
+                .lock()
+                .ok()
+                .map(|m| m.contains_key(&winfo.hwnd))
+                .unwrap_or(false);
+            windows.push(launcher_ui::WindowEntry {
+                hwnd: format!("{}", winfo.hwnd).into(),
+                title: winfo.title.into(),
+                plugin_id: id.clone().into(),
+                pinned,
+            });
+        }
+    }
+    w.set_windows(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
+        windows,
     ))));
 
     w.set_about_text(

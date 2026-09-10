@@ -13,6 +13,13 @@ export struct PluginEntry {
     quarantined: bool,
 }
 
+export struct WindowEntry {
+    hwnd: string,
+    title: string,
+    plugin-id: string,
+    pinned: bool,
+}
+
 export struct WorkflowEntry {
     name: string,
     path: string,
@@ -34,12 +41,14 @@ export component ManagementWindow inherits Window {
     in property <[SettingRow]> general-rows;
     in property <[PluginEntry]> plugins;
     in property <[WorkflowEntry]> workflows;
+    in property <[WindowEntry]> windows;
     in property <string> about-text;
 
     callback tab-selected(int);
     callback setting-applied(string /* action-id */);
     callback plugin-toggled(string /* id */, bool /* enable */);
     callback workflow-deleted(string /* path */);
+    callback pin-toggled(string /* hwnd */, bool /* pin */);
     callback closed();
 
 
@@ -56,7 +65,8 @@ export component ManagementWindow inherits Window {
                 {i: 0, label: "General"},
                 {i: 1, label: "Plugins"},
                 {i: 2, label: "Workflows"},
-                {i: 3, label: "About"},
+                {i: 3, label: "Windows"},
+                {i: 4, label: "About"},
             ]: Rectangle {
                 width: 96px;
                 background: root.tab == t.i ? Theme.bg-selected : transparent;
@@ -198,8 +208,42 @@ export component ManagementWindow inherits Window {
             }
         }
 
-        // ---- About ----
+        // ---- Windows (P3.1-B1: discovered plugin windows + pin) ----
         if root.tab == 3: VerticalLayout {
+            padding: Theme.spacing-lg;
+            spacing: Theme.spacing-xs;
+            if root.windows.length == 0: Text {
+                text: "No plugin windows discovered. Plugins that declare \"window\": true and are running appear here.";
+                color: Theme.text-tertiary;
+                font-size: Theme.type-secondary;
+                wrap: word-wrap;
+            }
+            for w in root.windows: Rectangle {
+                height: 48px;
+                background: Theme.bg-surface;
+                border-radius: Theme.radius-md;
+                HorizontalLayout {
+                    padding-left: Theme.spacing-md;
+                    padding-right: Theme.spacing-md;
+                    spacing: Theme.space-2;
+                    alignment: start;
+                    VerticalLayout {
+                        alignment: center;
+                        Text { text: w.title; color: Theme.text-primary; font-size: Theme.type-body; overflow: elide; }
+                        Text { text: "plugin: " + w.plugin-id; color: Theme.text-tertiary; font-size: Theme.type-caption; overflow: elide; }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    ThemedButton {
+                        text: w.pinned ? "Unpin (topmost)" : "Pin on top";
+                        width: 140px;
+                        clicked => { root.pin-toggled(w.hwnd, !w.pinned); }
+                    }
+                }
+            }
+        }
+
+        // ---- About ----
+        if root.tab == 4: VerticalLayout {
             padding: Theme.spacing-lg;
             spacing: Theme.spacing-md;
             Text { text: "Native Launcher"; color: Theme.text-primary; font-size: Theme.type-title; }

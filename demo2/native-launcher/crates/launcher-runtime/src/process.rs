@@ -37,6 +37,13 @@ pub struct ProcessSession {
 }
 
 impl ProcessSession {
+    /// P3.1-B1: the OS process id of the contained child (stable while the
+    /// process lives). The plugin host exposes this so the launcher can
+    /// discover plugin-owned top-level windows (window management).
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// Spawn per `spec` under `limits`. On Windows the process is created
     /// CREATE_SUSPENDED, assigned to its kill-on-close job, and only then
     /// resumed (ADR-0005; review 53 §9) — the tree is contained from its

@@ -56,3 +56,94 @@ mod tests {
     // No headless test: style checks require a live HWND. Covered by the
     // manual WIN-TRAY checklist in docs/MVP3.1-ACCEPTANCE.md.
 }
+
+// ---- P3.1-B1: plugin window discovery + topmost -------------------------
+// Strict pid boundary: only windows whose owning process is a plugin the
+// launcher itself spawned are ever enumerated or manipulated. Target
+// processes are NEVER touched by these functions.
+
+/// One enumerable top-level window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowInfo {
+    pub hwnd: isize,
+    pub title: String,
+    pub pid: u32,
+}
+
+/// Enumerate VISIBLE, titled top-level windows owned by `pid`.
+#[cfg(windows)]
+pub fn visible_windows_of_pid(pid: u32) -> Vec<WindowInfo> {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    };
+
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let out = unsafe { &mut *(lparam.0 as *mut Vec<WindowInfo>) };
+        let mut owner: u32 = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut owner));
+        }
+        let visible = unsafe { IsWindowVisible(hwnd) }.as_bool();
+        if !visible || owner == 0 {
+            return BOOL(1);
+        }
+        let mut buf = [0u16; 256];
+        let len = unsafe { GetWindowTextW(hwnd, &mut buf) };
+        if len == 0 {
+            return BOOL(1); // untitled windows are not manageable targets
+        }
+        out.push(WindowInfo {
+            hwnd: hwnd.0 as isize,
+            title: String::from_utf16_lossy(&buf[..len as usize]),
+            pid: owner,
+        });
+        BOOL(1)
+    }
+
+    let mut out: Vec<WindowInfo> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(
+            Some(enum_proc),
+            LPARAM(&mut out as *mut Vec<WindowInfo> as isize),
+        );
+    }
+    out.retain(|w| w.pid == pid);
+    out
+}
+
+/// Toggle topmost for a window we own a pin on (fail-loud on UIPI denial).
+#[cfg(windows)]
+pub fn set_topmost(hwnd: isize, topmost: bool) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+    };
+    if hwnd == 0 {
+        return Err("invalid hwnd".into());
+    }
+    unsafe {
+        SetWindowPos(
+            HWND(hwnd as *mut _),
+            if topmost { HWND_TOPMOST } else { HWND_NOTOPMOST },
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        )
+        .map_err(|e| format!("UIPI/set_window_pos: {e}"))?;
+    }
+    tracing::debug!(hwnd, topmost, "window.topmost");
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn visible_windows_of_pid(_pid: u32) -> Vec<WindowInfo> {
+    Vec::new()
+}
+
+#[cfg(not(windows))]
+pub fn set_topmost(_hwnd: isize, _topmost: bool) -> Result<(), String> {
+    Err("unsupported platform".into())
+}
