@@ -2039,6 +2039,14 @@ fn main() -> anyhow::Result<()> {
             .ok();
     }
 
+    // P3.1-B0: tray entry → standalone management window
+    tray.on_management_requested({
+        let state = state.clone();
+        move || {
+            management::open(state.clone());
+        }
+    });
+
     tray.on_quit_requested(|| {
         // P2.4-E03: persist the plugin diagnostics snapshot for dev tooling /
         // support bundles (bounded ring, observation-only data).

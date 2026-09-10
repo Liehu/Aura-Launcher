@@ -36,6 +36,8 @@ export component TrayIcon inherits SystemTrayIcon {
     callback show-requested();
     callback quit-requested();
     callback workflow-demo-requested();
+    // P3.1-B0: open the standalone management window
+    callback management-requested();
 
     clicked => { root.show-requested(); }
 
@@ -43,6 +45,10 @@ export component TrayIcon inherits SystemTrayIcon {
         MenuItem {
             title: "显示启动器";
             activated => { root.show-requested(); }
+        }
+        MenuItem {
+            title: "打开管理窗口";
+            activated => { root.management-requested(); }
         }
         MenuItem {
             title: "运行示例工作流";
