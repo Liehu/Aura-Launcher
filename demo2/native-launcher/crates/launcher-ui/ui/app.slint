@@ -145,6 +145,8 @@ export component AppWindow inherits Window {
     in property <bool> editor-can-redo;
     // P3.0-F14: detail pane (Tab) — pure projection of the selected result
     in-out property <bool> detail-visible;
+    // P3.2-B1: rich-result lines for the selected command (host-rendered)
+    in property <[string]> detail-lines;
     callback editor-closed();
     callback editor-add-node(string, string);
     callback editor-remove-node(string);
@@ -412,6 +414,12 @@ export component AppWindow inherits Window {
                 color: Theme.text-tertiary;
                 font-size: Theme.type-caption;
                 overflow: elide;
+            }
+            for line in root.detail-lines: Text {
+                text: line;
+                color: Theme.text-secondary;
+                font-size: Theme.type-secondary;
+                wrap: word-wrap;
             }
             Text {
                 text: "Tab to close";

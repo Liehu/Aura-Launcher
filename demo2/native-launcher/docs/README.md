@@ -92,6 +92,7 @@
 | `165-p31-b0-management-window.md` | **P3.1 Batch B0**：统一管理窗口（独立 Slint 窗口四 Tab：常规/插件/工作流/关于）+ 插件启停即时生效 + ADR-0019 | ✅ 908 tests |
 | `166-p31-b1-window-discovery-topmost.md` | **P3.1 Batch B1**：插件窗口发现（pid 边界 + manifest window 声明）+ 置顶切换 + 管理页「Windows」Tab（免 hook） | ✅ 909 tests |
 | `167-p31-b2-b3-follow-desktop-pin.md` | **P3.1 Batch B2/B3**：跟随钉（WinEventHook 前台监听，免注入 + 自动解除）+ 桌面钉 WorkerW（实验）+ 管理页目标选择 UI | ✅ 910 tests |
+| `168-p32-rich-results.md` | **P3.2 Batch B0/B1**：Rich Results v1（契约冻结 ADR-0020 + 富块校验/注册表 + 详情面板渲染 + 端到端测试） | ✅ 916 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

@@ -206,6 +206,12 @@ pub struct PluginResultItem {
     /// non-lexical results (e.g. calculators) to surface; clamped on parse.
     #[serde(default)]
     pub score: f32,
+    /// P3.2: raw rich-result payload (RICH-RESULT-v1). Untyped passthrough
+    /// here ON PURPOSE: an invalid payload must drop only the rich part,
+    /// never fail the whole item — the host parses+validates leniently via
+    /// `launcher_domain::rich::RichResult::from_value`.
+    #[serde(default)]
+    pub rich: Option<serde_json::Value>,
 }
 
 /// Maximum results accepted from a plugin; anything above is truncated.

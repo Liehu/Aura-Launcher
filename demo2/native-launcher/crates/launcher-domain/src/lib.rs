@@ -6,6 +6,7 @@ pub mod expr;
 pub mod execution_semantics;
 pub mod pinyin;
 pub mod pinyin_table;
+pub mod rich;
 pub mod failure;
 pub mod file_change;
 pub mod icon;

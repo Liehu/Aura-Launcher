@@ -1,7 +1,8 @@
 # RICH-RESULT-draft（P3.0-F10 协议草案 — DRAFT，非 FROZEN）
 
-> 状态：DRAFT（评审中）。本文件只提出协议形状，不修改任何 FROZEN 契约；
-> 实现随 P3.x Marketplace 批次。遵循 UI 纯投影红线（INV-035~037）。
+> 状态：**FROZEN v1**（P3.2-B0，ADR-0020）。Image block 与交互表格
+> 后置 P4；实现锚点：`launcher_domain::rich`（类型/校验/注册表）+
+> 详情面板渲染（P3.2-B1）。遵循 UI 纯投影红线（INV-035~037）。
 
 # 1. 动机
 
@@ -25,23 +26,25 @@ RichBlock（只读，v1 五种）:
     Divider
 ```
 
-# 3. 红线
+# 3. 红线（已实现锚点）
 
 1. Rich 内容是 **DATA**：不承载 Capability/授权/确认（任何动作仍走
    ActionPanel 动作 + 权威链）。
 2. 渲染器**不解析语义**：未知 block 类型 → 跳过该 block（向前兼容）。
-3. 尺寸预算：单结果 ≤256KB（与插件帧上限一致）；块数 ≤64。
-4. 来源标识：Rich 结果必须携带 provider_id（Host 权威），审计随行。
-5. 脱敏：进入 Rich 前内容必须过 E 线 sanitize（privacy::sanitize_untrusted
-   同源规则）；禁止嵌入凭据/token（P210 NEVER_SENT）。
+3. 尺寸预算：单结果 ≤256 总字符（`MAX_TOTAL_CHARS`）+ ≤64 块 +
+   表格 ≤200 行——`RichResult::validate` 强制。
+4. 来源标识：provider_id = Host 权威（`plugin:<manifest.id>`，INV-029）。
+5. 脱敏：intake 时逐串清洗（控制字符剥离 + 定长截断，与
+   `privacy::sanitize_untrusted` 同策略）；禁止凭据/token
+   （P210 NEVER_SENT）。
 
-# 4. 呈现
+# 4. 呈现（已实现）
 
-Main 模式选中 Rich 结果时，Tab 详情面板（P3.0-F14 已有骨架）渲染
-blocks；列表行仍显示 title/subtitle。
+Main 模式选中 Rich 结果时，Tab 详情面板（P3.0-F14）渲染 `render_lines()`
+纯文本投影；列表行仍显示 title/subtitle。交互表格后置 P4。
 
-# 5. 开放问题（评审输入）
+# 5. 后置（P4）
 
-- Image resource 的解析边界（icon 管线 vs 独立缓存）
-- 表格排序/滚动交互是否进 v1
-- 与 MCP `content` 数组的映射表
+- Image block（资源解析/缓存管线）
+- 交互表格（排序/滚动）
+- MCP `content` 数组映射表

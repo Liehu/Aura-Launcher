@@ -447,6 +447,20 @@ impl PluginHandle {
                 Some(id) => format!("{}:{}", self.manifest.id, id),
                 None => format!("{}:{}", self.manifest.id, item.title),
             };
+            // P3.2: lenient rich-result intake — an invalid payload drops
+            // only the rich part and never fails the item
+            if let Some(raw) = &item.rich {
+                match launcher_domain::rich::RichResult::from_value(raw) {
+                    Some(rich) => {
+                        if let Err(e) = rich.validate() {
+                            tracing::warn!(plugin = %self.manifest.id, error = %e, "rich.validate_failed");
+                        } else {
+                            launcher_domain::rich::store(&cmd_id, rich);
+                        }
+                    }
+                    None => tracing::warn!(plugin = %self.manifest.id, "rich.payload_invalid_dropped"),
+                }
+            }
             cmds.push(DomainCommand {
                 id: cmd_id,
                 title: item.title,
@@ -586,6 +600,35 @@ mod tests {
             "timeout_ms": timeout_ms
         }))
         .unwrap()
+    }
+
+    /// P3.2-B0: a plugin query response with a `rich` payload is validated
+    /// and stored in the process-local registry keyed by the command id.
+    #[test]
+    fn p32_rich_result_stored() {
+        let Some(python) = std::env::var("LAUNCHER_PYTHON").ok().filter(|v| !v.is_empty())
+        else {
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("nl_p32_rich_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("rich.py"), include_str!("../tests/rich_fixture.py")).unwrap();
+        let m: PluginManifest = serde_json::from_value(serde_json::json!({
+            "id": "p32.rich",
+            "name": "Rich",
+            "runtime": { "type": "python", "executable": "rich.py" },
+            "timeout_ms": 3000
+        }))
+        .unwrap();
+        let mut handle = PluginHandle::spawn(m, &dir).unwrap();
+        let cmds = handle.query("rich").unwrap();
+        let rich_cmd = cmds.iter().find(|c| c.id.ends_with(":rich")).expect("rich command");
+        let stored = launcher_domain::rich::lookup(&rich_cmd.id);
+        assert!(stored.is_some(), "rich payload must be stored under the command id");
+        assert!(stored.unwrap().render_lines().contains(&"hello rich".to_string()));
+        drop(handle);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// P3.1-B1 WIN-1: a live plugin process exposes a nonzero pid. The

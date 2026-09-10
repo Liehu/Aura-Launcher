@@ -2198,6 +2198,22 @@ fn main() -> anyhow::Result<()> {
                     // a pending confirmation - it never carries across commands
                     st.pending_confirmation = None;
                 }
+                // P3.2-B1: project rich-result lines for the detail pane
+                {
+                    let lines = launcher_domain::rich::lookup(&command_id)
+                        .map(|r| r.render_lines())
+                        .unwrap_or_default();
+                    let ui2 = ui_weak.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui2.upgrade() {
+                            ui.set_detail_lines(slint::ModelRc::new(std::rc::Rc::new(
+                                slint::VecModel::from(
+                                    lines.into_iter().map(slint::SharedString::from).collect::<Vec<_>>(),
+                                ),
+                            )));
+                        }
+                    });
+                }
                 sync_action_panel(&state, &ui_weak);
             }
         });
