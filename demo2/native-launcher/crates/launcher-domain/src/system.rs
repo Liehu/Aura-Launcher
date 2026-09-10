@@ -59,10 +59,12 @@ pub enum SystemTarget {
     Process {
         pid: u32,
         name: String,
-        /// Process creation time (ms) observed at resolve; PID reuse
-        /// changes it while the pid itself stays.
+        /// Process creation time in the OS-native FILETIME unit
+        /// (100ns ticks) observed at resolve — raw identity precision is
+        /// preserved, never downsampled. PID reuse changes it while the
+        /// pid itself stays.
         #[serde(default)]
-        creation_time_ms: Option<i64>,
+        creation_time_ft: Option<i64>,
     },
     Window {
         hwnd: u64,

@@ -120,23 +120,65 @@ pub mod system_adapter;
 // from (command, bool) to an OS effect.
 
 /// Opaque authorization token: proof that ONE validated system command has
-/// passed the engine's confirmation gate. Cannot be constructed outside
-/// this crate (private field).
+/// passed the engine's policy + confirmation gates. Cannot be constructed
+/// or cloned outside this crate (private field, no `Clone`/`Copy`) —
+/// INV-EFFECT-104 (mint is engine-internal) and INV-EFFECT-105 (one-shot:
+/// consumed by move into `execute_authorized`).
 pub struct SystemAuthorization {
     cmd: launcher_domain::system::SystemCommand,
+    /// Audit stamp: whether the confirmation gate passed (approval input),
+    /// and the policy decision recorded at mint time.
+    audit: SystemAuthorizationAudit,
+}
+
+/// Read-only audit metadata carried by the token (§34 origin propagation).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemAuthorizationAudit {
+    pub origin: String,
+    pub risk: launcher_domain::system::SystemRisk,
+    pub policy_approved: bool,
+    pub confirmation_confirmed: bool,
+    pub minted_at_ms: i64,
 }
 
 impl SystemAuthorization {
-    /// Read-only view for audit/logging; carries no extra authority.
+    /// Read-only view of the BOUND command for audit/logging. The adapter
+    /// executes THIS command — no other command can ride the token
+    /// (P210-C07: token ↔ command binding).
     pub fn command(&self) -> &launcher_domain::system::SystemCommand {
         &self.cmd
     }
+
+    pub fn audit(&self) -> &SystemAuthorizationAudit {
+        &self.audit
+    }
 }
 
-/// The engine-side gate: validates the command and applies the
-/// confirmation policy, minting the single-use authorization token the
-/// adapter consumes. This is the ONLY public constructor.
-pub fn authorize_system_command(
+/// THE public execution entry for system effects: runs the frozen chain —
+/// Resolver policy (origin allow-list / risk ceiling / deny list) →
+/// confirmation gate → mint → adapter — in ONE engine-owned call. The
+/// `confirmed` flag here is the host's APPROVAL input to the engine gate,
+/// not an adapter credential.
+pub fn execute_system_effect(
+    resolver: &launcher_domain::system::SystemResolver,
+    cmd: &launcher_domain::system::SystemCommand,
+    confirmed: bool,
+) -> Result<Effect, ActionError> {
+    let resolution = resolver
+        .resolve(cmd)
+        .map_err(|_| ActionError::Unsupported)?;
+    if !resolution.approved_by_policy {
+        return Err(ActionError::Unsupported);
+    }
+    let auth = authorize_system_command(cmd, confirmed)?;
+    system_adapter::execute_authorized(auth)
+}
+
+/// The engine-side mint. INV-EFFECT-104: deliberately `pub(crate)` —
+/// no crate outside launcher-action may construct a
+/// `SystemAuthorization`; external code MUST go through
+/// `execute_system_effect` (Resolver policy → gate → adapter).
+pub(crate) fn authorize_system_command(
     cmd: &launcher_domain::system::SystemCommand,
     confirmed: bool,
 ) -> Result<SystemAuthorization, ActionError> {
@@ -146,7 +188,23 @@ pub fn authorize_system_command(
     if cmd.risk.requires_confirmation() && !confirmed {
         return Err(ActionError::ConfirmationRequired);
     }
-    Ok(SystemAuthorization { cmd: cmd.clone() })
+    Ok(SystemAuthorization {
+        cmd: cmd.clone(),
+        audit: SystemAuthorizationAudit {
+            origin: cmd.origin.clone(),
+            risk: cmd.risk,
+            policy_approved: true,
+            confirmation_confirmed: confirmed,
+            minted_at_ms: now_ms(),
+        },
+    })
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Non-Windows stub: the adapter is Windows-only by definition; every

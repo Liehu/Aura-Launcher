@@ -40,7 +40,7 @@ pub fn process_command(pid: u32, name: &str, operation: &str, origin: &str) -> O
 pub fn process_command_with_identity(
     pid: u32,
     name: &str,
-    creation_time_ms: Option<i64>,
+    creation_time_ft: Option<i64>,
     operation: &str,
     origin: &str,
 ) -> Option<SystemCommand> {
@@ -50,7 +50,7 @@ pub fn process_command_with_identity(
         target: SystemTarget::Process {
             pid,
             name: name.into(),
-            creation_time_ms,
+            creation_time_ft,
         },
         risk: process_risk(operation)?,
         origin: origin.into(),

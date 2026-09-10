@@ -51,3 +51,13 @@ Adapter   ─X→ Authorization（adapter 不铸造授权，也不接收 authori
 2. `AuthorizedEffect` 只能由 ActionEngine（launcher-action 的授权门）生成。
 3. Adapter 收到的是 token，不是命令 + 布尔。
 4. 授权是**一次一命令**的；不存在"批准后全部放行"。
+5. **INV-EFFECT-104**：铸造是 engine 内部函数（`pub(crate)`）——外部
+   crate 唯一的公共入口是 `execute_system_effect(resolver, cmd,
+   confirmed)`，它在铸 token 之前先跑 Resolver policy（origin 允许表/
+   风险上限/deny 表）。`confirmed` 在这条边界上是 host 的**批准输入**，
+   不是 adapter 凭证。
+6. **INV-EFFECT-105**：token 是 move-only（无 Clone/Copy），
+   `execute_authorized(auth)` 按值消费——一次性由编译器强制。
+7. **Token ↔ Command 绑定**（P210-C07）：token 携带完整被授权命令 +
+   审计元数据（origin/risk/policy 决定/铸造时刻）；adapter 执行的就是
+   token 里的命令，不接收第二个命令参数。

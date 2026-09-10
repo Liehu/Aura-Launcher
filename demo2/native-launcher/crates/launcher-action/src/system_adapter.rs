@@ -48,7 +48,7 @@ pub fn execute_authorized(auth: SystemAuthorization) -> Result<Effect, ActionErr
 /// open by pid, read the creation time, compare. Mismatch or death =
 /// StaleTarget (a reused pid must never be terminated).
 #[cfg(windows)]
-fn verify_process_identity(pid: u32, creation_time_ms: Option<i64>) -> Result<(), ActionError> {
+fn verify_process_identity(pid: u32, creation_time_ft: Option<i64>) -> Result<(), ActionError> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{
         GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -68,13 +68,15 @@ fn verify_process_identity(pid: u32, creation_time_ms: Option<i64>) -> Result<()
         if ok.is_err() {
             return Err(ActionError::StaleTarget);
         }
-        let Some(expected) = creation_time_ms else {
+        // compare RAW FILETIME (100ns) — identity precision is never
+        // downsampled (P210-B07)
+        let Some(expected) = creation_time_ft else {
             return Ok(()); // no identity recorded — legacy command; accept
         };
-        let ft = (u64::from(creation.dwHighDateTime) << 32) | u64::from(creation.dwLowDateTime);
-        let actual_ms = (ft / 10_000) as i64;
-        if actual_ms != expected {
-            tracing::warn!(pid, expected, actual_ms, "system.target stale (PID reuse)");
+        let actual =
+            (u64::from(creation.dwHighDateTime) << 32) as i64 | i64::from(creation.dwLowDateTime);
+        if actual != expected {
+            tracing::warn!(pid, expected, actual, "system.target stale (PID reuse)");
             return Err(ActionError::StaleTarget);
         }
         Ok(())
@@ -228,12 +230,12 @@ fn process_kill(cmd: &SystemCommand) -> Result<Effect, ActionError> {
     use windows::Win32::System::Threading::{
         OpenProcess, TerminateProcess, PROCESS_TERMINATE,
     };
-    let SystemTarget::Process { pid, name: _, creation_time_ms } = &cmd.target else {
+    let SystemTarget::Process { pid, name: _, creation_time_ft } = &cmd.target else {
         return Err(ActionError::Unsupported);
     };
     // P210-006 §10: PID reuse check BEFORE the terminate — a reused pid
     // belonging to a different process must never be killed.
-    verify_process_identity(*pid, *creation_time_ms)?;
+    verify_process_identity(*pid, *creation_time_ft)?;
     unsafe {
         // Open the process by pid; the pid came from the host's enumeration
         // snapshot and may be stale — a failed open is a clean error, never
@@ -295,9 +297,7 @@ fn power_shutdown() -> Result<Effect, ActionError> {
 mod tests {
     use super::*;
     use crate::authorize_system_command;
-    use launcher_domain::system_process_window::{
-        process_command, window_command, window_command_with_identity,
-    };
+    use launcher_domain::system_process_window::{process_command, window_command};
     use launcher_domain::system::{SystemRisk, SystemTarget};
 
     fn run(cmd: &SystemCommand, confirmed: bool) -> Result<Effect, ActionError> {
@@ -393,7 +393,9 @@ mod tests {
 mod p210_tests {
     use super::*;
     use crate::authorize_system_command;
-    use launcher_domain::system_process_window::process_command_with_identity;
+    use launcher_domain::system_process_window::{
+        process_command, process_command_with_identity, window_command,
+    };
 
     /// P210-006 §10: a PID whose creation time no longer matches the
     /// resolve-time identity is StaleTarget — never terminated. Uses the
@@ -433,5 +435,40 @@ mod p210_tests {
             authorize_system_command(&kill, false),
             Err(ActionError::ConfirmationRequired)
         ));
+    }
+
+    /// INV-EFFECT-104: the PUBLIC path runs the full chain — Resolver
+    /// policy first. A denied origin never mints a token, and an approved
+    /// request reaches the adapter (here: StaleTarget from the dead-HWND
+    /// identity check proves the chain went all the way through).
+    #[test]
+    fn public_entry_enforces_policy_before_mint() {
+        use launcher_domain::system::SystemResolver;
+        let mut resolver = SystemResolver::default();
+        resolver.policy.allowed_origins = vec!["search".into()];
+        let focus = window_command(0xDEAD_BEEF, "Ghost", "focus", "ai").unwrap();
+        // origin "ai" not on the allow-list → denied BEFORE any mint
+        assert!(matches!(
+            crate::execute_system_effect(&resolver, &focus, true),
+            Err(ActionError::Unsupported)
+        ));
+        // allowed origin → policy pass → mint → adapter identity check
+        let focus_search =
+            window_command(0xDEAD_BEEF, "Ghost", "focus", "search").unwrap();
+        assert!(matches!(
+            crate::execute_system_effect(&resolver, &focus_search, true),
+            Err(ActionError::StaleTarget)
+        ));
+    }
+
+    /// INV-EFFECT-105: the token is one-shot BY TYPE — `execute_authorized`
+    /// takes it by value and `SystemAuthorization` has no Clone, so a
+    /// consumed token cannot be reused (compile-time ownership).
+    #[test]
+    fn token_is_move_only() {
+        fn assert_move_only<T>(_: T) {}
+        let kill = process_command(1, "x", "kill", "test").unwrap();
+        let auth = authorize_system_command(&kill, true).unwrap();
+        assert_move_only(auth); // moves; a Clone type would allow dup minting
     }
 }

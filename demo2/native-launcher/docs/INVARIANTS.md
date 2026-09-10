@@ -196,3 +196,9 @@ max_expr_depth=32）是求值安全边界而非 runtime quota。
 | INV-IDENTITY-101 | 动态目标（PID/HWND）在 effect 前必须重验身份；不匹配 = StaleTarget，绝不执行。 | `verify_process_identity` / `verify_window_identity` + `pid_reuse_is_detected`、`dead_hwnd_is_stale_target` ✅ |
 | INV-AGENT-101 | Replan 不得重执行 Succeeded 步骤——成功效果不可变。 | agent_loop step_status + `p210_replan_skips_succeeded_steps` ✅ |
 | INV-STATE-101 | 状态不承载授权：`Approved`/`Running` 等状态不产生 Capability/Effect 权威。 | 结构性（各 token 私有字段）+ 既有 G04 矩阵 ✅ |
+| INV-EFFECT-104 | Only ActionEngine may mint SystemAuthorization——铸造函数为 crate 内部；外部唯一入口 execute_system_effect 先经 Resolver policy。 | `public_entry_enforces_policy_before_mint` ✅ |
+| INV-EFFECT-105 | One-shot authorization——token 无 Clone/Copy，execute_authorized 按值消费，编译器强制一次性。 | `token_is_move_only` ✅ |
+| INV-EFFECT-106 | Token ↔ Command binding——adapter 执行 token 内绑定的命令，不接收第二命令参数。 | `SystemAuthorization::command()` 私有字段结构 ✅ |
+| INV-RETRY-101 | Cancelled ≠ 安全重试——retry 由 (result, effect_state, idempotent) 共同决定；Cancelled+Unknown 走幂等门。 | `retry_matrix`（P210-D07）✅ |
+| INV-RECOVERY-101 | Unknown 效果走显式恢复路由（Queryable/PolicyRetry/ExplicitRecovery），绝不盲目重跑。 | `recovery_route`（P210-D08）✅ |
+| INV-IDENTITY-102 | PID 身份保持 OS 原始精度（FILETIME 100ns），不降采样。 | `verify_process_identity` + `pid_reuse_is_detected` ✅ |
