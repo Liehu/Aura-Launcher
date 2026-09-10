@@ -69,6 +69,7 @@ Producer (UI/Plugin/Workflow/AI/MCP)
 | `VISUAL-DESIGN-SPEC-v0.1`（外部稿，评审见 `VISUAL-DESIGN-SPEC-REVIEW.md`） | FROZEN v0.1 | Design Tokens（theme.slint 单一注入点）/ 640×420 基线 / Motion ≤200ms / 禁 Dashboard 化 |
 | `UI-CONTRACT-COMPARISON.md` | 存档 | 两版本合并决议（D1：单击=选中并执行 primary） |
 | `docs/contracts/EFFECT-AUTHORITY.md`（P210） | FROZEN | 权威链 Producer→Resolver→Policy→Approval→Engine→AuthorizedEffect→Adapter；adapter 无 authority 参数 |
+| `docs/PLUGIN-DEV-GUIDE.md`（P3.1） | CURRENT | 插件开发指南（作者视角）：快速上手/manifest 参考/UI 表达清单/execute_action/调试与打包 |
 | `docs/contracts/EXECUTION-SEMANTICS-v1.md`（P210） | FROZEN | CommandResult/EffectState/StepStatus/Retry 矩阵/Recovery Protocol 统一词汇 |
 | `docs/contracts/STATE-GENERATION.md`（P210） | FROZEN | 六类 Lifecycle State + Generation 注册表（失败不递增；Generation ≠ Identity） |
 
