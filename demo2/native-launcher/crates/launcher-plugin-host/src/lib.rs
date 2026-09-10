@@ -548,6 +548,92 @@ impl PluginHandle {
         Ok(payload)
     }
 
+    // ---- P3-UI.0 / P3UI-D: interactive tool methods (spec §41-§47) ----
+    // Same NDJSON/JSON-RPC transport; session ids are HOST-generated and
+    // merely echoed by the plugin (§29).
+
+    fn tool_request<T: serde::de::DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<T, PluginError> {
+        let timeout = Duration::from_millis(self.manifest.timeout_ms.min(2000));
+        let req = Request::new(self.next_request_id(), method, params);
+        let resp = self.request(&req, timeout)?;
+        if let Some(err) = resp.error {
+            return Err(PluginError::Malformed(format!(
+                "plugin error {}: {}",
+                err.code, err.message
+            )));
+        }
+        serde_json::from_value(resp.result.unwrap_or(serde_json::Value::Null))
+            .map_err(|e| PluginError::Malformed(format!("{method}: {e}")))
+    }
+
+    /// `tool.list` (§42): the plugin's declared interactive tools.
+    pub fn tool_list(&mut self, request_id: &str) -> Result<Vec<serde_json::Value>, PluginError> {
+        Ok(self
+            .tool_request::<launcher_ipc::tool_params::ToolListResult>(
+                launcher_ipc::tool_method::TOOL_LIST,
+                serde_json::json!({ "request_id": request_id }),
+            )?
+            .tools)
+    }
+
+    /// `tool.open` (§43): host-generated session id; the plugin responds
+    /// with ui_generation + the declarative UI schema.
+    pub fn tool_open(
+        &mut self,
+        session_id: &str,
+        tool_id: &str,
+        context: serde_json::Value,
+        initial_input: serde_json::Value,
+    ) -> Result<launcher_ipc::tool_params::ToolOpenResult, PluginError> {
+        self.tool_request(
+            launcher_ipc::tool_method::TOOL_OPEN,
+            serde_json::json!({
+                "session_id": session_id,
+                "tool_id": tool_id,
+                "context": context,
+                "initial_input": initial_input
+            }),
+        )
+    }
+
+    /// `tool.event` (§44): relay a validated UI event.
+    pub fn tool_event(
+        &mut self,
+        event: &launcher_domain::tool::UiEvent,
+    ) -> Result<serde_json::Value, PluginError> {
+        self.tool_request(
+            launcher_ipc::tool_method::TOOL_EVENT,
+            serde_json::to_value(event).map_err(|e| PluginError::Malformed(e.to_string()))?,
+        )
+    }
+
+    /// `tool.close` (§46): the session becomes Closed (terminal).
+    pub fn tool_close(&mut self, session_id: &str) -> Result<(), PluginError> {
+        self.tool_request::<serde_json::Value>(
+            launcher_ipc::tool_method::TOOL_CLOSE,
+            serde_json::json!({ "session_id": session_id }),
+        )?;
+        Ok(())
+    }
+
+    /// `tool.cancel` (§47): cancel the current tool event — NOT an
+    /// authorization/effect/workflow cancellation.
+    pub fn tool_cancel(
+        &mut self,
+        session_id: &str,
+        event_id: Option<&str>,
+    ) -> Result<(), PluginError> {
+        self.tool_request::<serde_json::Value>(
+            launcher_ipc::tool_method::TOOL_CANCEL,
+            serde_json::json!({ "session_id": session_id, "event_id": event_id }),
+        )?;
+        Ok(())
+    }
+
     /// Kill the plugin process tree; never panics (P0-A: job terminate
     /// + reap live in the runtime).
     pub fn kill(&mut self) {

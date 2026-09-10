@@ -239,6 +239,44 @@ impl PluginRegistry {
                 decision   TEXT NOT NULL DEFAULT 'unset',
                 PRIMARY KEY (plugin_id, capability)
             );
+            CREATE TABLE IF NOT EXISTS plugin_tools (
+                plugin_id      TEXT NOT NULL,
+                tool_id        TEXT NOT NULL,
+                version        TEXT NOT NULL,
+                name           TEXT NOT NULL,
+                description    TEXT,
+                category       TEXT,
+                icon_ref       TEXT,
+                entry_type     TEXT NOT NULL,
+                enabled        INTEGER NOT NULL DEFAULT 1,
+                schema_version INTEGER NOT NULL,
+                created_at     INTEGER NOT NULL,
+                updated_at     INTEGER NOT NULL,
+                PRIMARY KEY (plugin_id, tool_id)
+            );
+            CREATE TABLE IF NOT EXISTS tool_functions (
+                plugin_id              TEXT NOT NULL,
+                tool_id                TEXT NOT NULL,
+                function_id            TEXT NOT NULL,
+                input_schema_json      TEXT NOT NULL,
+                output_schema_json     TEXT NOT NULL,
+                deterministic          INTEGER NOT NULL,
+                side_effect            INTEGER NOT NULL,
+                required_capabilities  TEXT NOT NULL DEFAULT '[]',
+                PRIMARY KEY (plugin_id, tool_id, function_id)
+            );
+            CREATE TABLE IF NOT EXISTS plugin_ui_contracts (
+                plugin_id         TEXT NOT NULL,
+                tool_id           TEXT NOT NULL,
+                ui_schema_version INTEGER NOT NULL,
+                min_host_version  TEXT,
+                max_host_version  TEXT,
+                max_nodes         INTEGER NOT NULL,
+                max_depth         INTEGER NOT NULL,
+                max_text_bytes    INTEGER NOT NULL,
+                max_asset_bytes   INTEGER NOT NULL,
+                PRIMARY KEY (plugin_id, tool_id)
+            );
             "#,
         )?;
         Self::migrate(&conn);
@@ -488,6 +526,96 @@ impl PluginRegistry {
             tracing::warn!(path = %self.db_path.display(), error = %e, "plugin registry backup write failed");
         }
     }
+
+    // ---- P3-UI.0: tool metadata tables (§21-§23) ---------------------------
+
+    /// Upsert a tool's metadata (from the manifest `tools` array).
+    pub fn upsert_tool(
+        &self,
+        plugin_id: &str,
+        tool_id: &str,
+        version: &str,
+        name: &str,
+        description: Option<&str>,
+        category: Option<&str>,
+        icon_ref: Option<&str>,
+        entry_type: &str,
+        schema_version: u32,
+    ) -> Result<(), rusqlite::Error> {
+        let now = now_ms();
+        let conn = self.conn.lock().expect("registry lock");
+        conn.execute(
+            r#"INSERT INTO plugin_tools
+               (plugin_id, tool_id, version, name, description, category, icon_ref, entry_type, enabled, schema_version, created_at, updated_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, ?10, ?10)
+               ON CONFLICT(plugin_id, tool_id) DO UPDATE SET
+               version=?3, name=?4, description=?5, category=?6, icon_ref=?7,
+               entry_type=?8, schema_version=?9, updated_at=?10"#,
+            rusqlite::params![plugin_id, tool_id, version, name, description, category, icon_ref, entry_type, schema_version, now],
+        )?;
+        Ok(())
+    }
+
+    /// Upsert a tool function's metadata.
+    pub fn upsert_tool_function(
+        &self,
+        plugin_id: &str,
+        tool_id: &str,
+        f: &launcher_domain::tool::ToolFunction,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().expect("registry lock");
+        let caps = serde_json::to_string(&f.required_capabilities)
+            .unwrap_or_else(|_| "[]".into());
+        conn.execute(
+            r#"INSERT INTO tool_functions
+               (plugin_id, tool_id, function_id, input_schema_json, output_schema_json, deterministic, side_effect, required_capabilities)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+               ON CONFLICT(plugin_id, tool_id, function_id) DO UPDATE SET
+               input_schema_json=?4, output_schema_json=?5, deterministic=?6, side_effect=?7, required_capabilities=?8"#,
+            rusqlite::params![
+                plugin_id, tool_id, f.id,
+                f.input_schema.to_string(), f.output_schema.to_string(),
+                f.deterministic as i64, f.side_effect as i64, caps,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Set the UI contract limits for a tool.
+    pub fn set_ui_contract(
+        &self,
+        plugin_id: &str,
+        tool_id: &str,
+        ui_schema_version: u32,
+        max_nodes: u32,
+        max_depth: u32,
+        max_text_bytes: u32,
+        max_asset_bytes: u32,
+    ) -> Result<(), rusqlite::Error> {
+        let conn = self.conn.lock().expect("registry lock");
+        conn.execute(
+            r#"INSERT INTO plugin_ui_contracts
+               (plugin_id, tool_id, ui_schema_version, max_nodes, max_depth, max_text_bytes, max_asset_bytes)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+               ON CONFLICT(plugin_id, tool_id) DO UPDATE SET
+               ui_schema_version=?3, max_nodes=?4, max_depth=?5, max_text_bytes=?6, max_asset_bytes=?7"#,
+            rusqlite::params![plugin_id, tool_id, ui_schema_version, max_nodes, max_depth, max_text_bytes, max_asset_bytes],
+        )?;
+        Ok(())
+    }
+
+    /// List tool ids for a plugin (management page projection).
+    pub fn tool_ids(&self, plugin_id: &str) -> Vec<String> {
+        let conn = self.conn.lock().expect("registry lock");
+        let Ok(mut stmt) = conn.prepare("SELECT tool_id FROM plugin_tools WHERE plugin_id = ?1 ORDER BY tool_id") else {
+            return Vec::new();
+        };
+        let rows = stmt.query_map([plugin_id], |r| r.get::<_, String>(0));
+        match rows {
+            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Err(_) => Vec::new(),
+        }
+    }
 }
 
 fn now_ms() -> i64 {
@@ -676,6 +804,20 @@ mod tests {
             .filter(|n| n.starts_with("plugins.db.corrupt-"))
             .collect();
         assert_eq!(quarantined.len(), 1, "corrupt file kept for forensics");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// P3-UI.0 §21-23: tool metadata / function / ui_contract tables are
+    /// writable and readable (management page projection).
+    #[test]
+    fn p3ui0_tool_metadata_tables_roundtrip() {
+        let dir = scratch_dir("p3ui0_tools");
+        let db = dir.join("plugins.db");
+        let reg = PluginRegistry::open(&db).unwrap();
+        reg.upsert_tool("com.test", "base64", "1.0.0", "Base64", Some("Codec"), Some("tools"), None, "interactive", 1).unwrap();
+        reg.set_ui_contract("com.test", "base64", 1, 256, 16, 8192, 65536).unwrap();
+        assert_eq!(reg.tool_ids("com.test"), vec!["base64"]);
+        assert!(reg.tool_ids("com.other").is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -95,6 +95,7 @@
 | `168-p32-rich-results.md` | **P3.2 Batch B0/B1**：Rich Results v1（契约冻结 ADR-0020 + 富块校验/注册表 + 详情面板渲染 + 端到端测试） | ✅ 916 tests |
 | `169-p3ui0-contract-foundation.md` | **P3-UI.0 Contract Foundation**：Tool/ToolSession/UiSchema 契约类型 + 状态机 + manifest 逐 tool fail-closed 校验 + 7 份 JSON Schema + IPC tool.* 词汇 | ✅ 922 tests |
 | `170-p3ui0-testkit.md` | **P3-UI.0 尾款**：testkit crate（契约 fixture 套件）+ README/ARCHITECTURE 18-crate 对齐 | ✅ 924 tests |
+| `171-p3ui0-tail-metadata-dispatch.md` | **P3-UI.0 尾款 II**：plugin_registry 三张元数据表 + plugin-host tool.* 分发 + Workflow ToolReference 类型接线 | ✅ 925 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |
