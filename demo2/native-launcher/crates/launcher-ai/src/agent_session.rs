@@ -21,6 +21,10 @@ fn legal(from: AgentRunStatus, to: AgentRunStatus) -> bool {
         (Created, Observing)
             | (Observing, Planning)
             | (Planning, Executing)
+            // G01 (history/153): planning-stage failures (pipeline errors,
+            // clarification denials) must reach the Failed terminal instead
+            // of being silently dropped by the whitelist
+            | (Planning, Failed)
             | (Executing, Completed)
             | (Executing, Failed)
             | (Executing, Replanning)

@@ -70,6 +70,7 @@
 | `151-p27-d-approval.md` | **P2.7 Batch 18**：D 线 AI Approval（审批门/单次使用/过期取消/编辑计划 + §23 run_agent 接线 + D02 审批 UI） | ✅ 842 tests |
 | `152-p27-e-memory-privacy.md` | **P2.7 Batch 19**：E 线 Memory/Privacy（三类有界 memory + local-first 远程门 + 注入防御 sanitize/override 检测） | ✅ 850 tests |
 | `153-p27-f-telemetry.md` | **P2.7 Batch 20**：F 线 UX 收口 + §37/§38 可观测性（事件环/指标埋点 + F04 进度 + F05 retry） | ✅ 853 tests |
+| `154-p27-g-qa-matrix.md` | **P2.7 Batch 21**：G 线 QA 补强矩阵（G01–G05 十条集成测试；修复 Planning→Failed 白名单缺口与伪造 decision id 缺陷） | ✅ 863 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

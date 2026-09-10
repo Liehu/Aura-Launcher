@@ -150,7 +150,7 @@ pub fn run_agent(
                     let decision = approval.request_approval(&req);
                     telemetry.metrics.approval_wait_ms += approval_started.elapsed().as_millis() as u64;
                     match decision {
-                        Some(decision) => {
+                        Some(decision) if decision.request_id == req.request_id => {
                             telemetry.event(now_ms(), crate::telemetry::AgentEvent::ApprovalReceived, &req.request_id);
                             match gate.decide(&req.request_id, decision.decision, now_ms()) {
                                 Ok(steps) if steps.is_empty() => {
@@ -168,7 +168,9 @@ pub fn run_agent(
                                 }
                             }
                         }
-                        None => {
+                        // None OR a decision for a different (forged) request
+                        // id: nothing is authorized (G04) — cancel.
+                        _ => {
                             let _ = gate.cancel(&req.request_id);
                             let _ = session.transition(AgentRunStatus::Cancelled, false);
                             telemetry.finish(t0, LoopStop::Cancelled);
