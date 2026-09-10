@@ -1,6 +1,11 @@
-// ManagementWindow (P3.1-B0, ADR-0019): the standalone management surface —
-// General / Plugins / Workflows / About tabs. Pure projection: it renders
-// host-provided models and forwards user actions upward; it holds no logic.
+// ManagementWindow (P3.1-B0, ADR-0019): the standalone management surface.
+// P3.1 UX revision: LEFT/RIGHT layout (uTools/Wox style) — a narrow menu
+// column (1/7 of the width) and the detail pane (6/7). Pure projection: it
+// renders host-provided models and forwards user actions upward.
+//
+// Lifecycle note: the host PARKS this window off-screen instead of hiding
+// it (winit show/hide cycles leave windows invalid — same lesson as the
+// popup); reopen = show + recenter.
 import { Theme } from "theme.slint";
 import { ThemedButton } from "primitives/themed-button.slint";
 
@@ -11,21 +16,6 @@ export struct PluginEntry {
     version: string,
     enabled: bool,
     quarantined: bool,
-}
-
-export struct WindowEntry {
-    hwnd: string,
-    title: string,
-    plugin-id: string,
-    pinned: bool,
-    desktop: bool,
-    // P3.1-B2: follow target (title) when this window is follow-pinned
-    follow-target: string,
-}
-
-export struct TargetEntry {
-    hwnd: string,
-    title: string,
 }
 
 export struct WorkflowEntry {
@@ -39,22 +29,35 @@ export struct SettingRow {
     action-id: string,
 }
 
+export struct WindowEntry {
+    hwnd: string,
+    title: string,
+    plugin-id: string,
+    pinned: bool,
+    desktop: bool,
+    follow-target: string,
+}
+
+export struct TargetEntry {
+    hwnd: string,
+    title: string,
+}
+
 export component ManagementWindow inherits Window {
     title: "Launcher Management";
-    width: 760px;
+    width: 780px;
     height: 520px;
     background: Theme.bg-canvas;
 
-    in-out property <int> tab: 0;   // 0 general / 1 plugins / 2 workflows / 3 about
+    in-out property <int> tab: 0;   // 0 general / 1 plugins / 2 workflows / 3 windows / 4 about
     in property <[SettingRow]> general-rows;
     in property <[PluginEntry]> plugins;
     in property <[WorkflowEntry]> workflows;
     in property <[WindowEntry]> windows;
-    // P3.1-B2: running windows the user may pick as a follow target
     in property <[TargetEntry]> targets;
+    in property <string> about-text;
     in-out property <string> follow-pick-hwnd;
     in-out property <string> follow-pick-title;
-    in property <string> about-text;
 
     callback tab-selected(int);
     callback setting-applied(string /* action-id */);
@@ -66,16 +69,13 @@ export component ManagementWindow inherits Window {
     callback follow-clear(string /* pin hwnd */);
     callback closed();
 
-
-
-    VerticalLayout {
-        // ---- tab bar ----
-        HorizontalLayout {
-            height: 40px;
-            padding-left: Theme.spacing-md;
-            padding-right: Theme.spacing-md;
+    // ---- left menu (1/7) ----
+    Rectangle {
+        width: parent.width / 7;
+        background: Theme.bg-surface;
+        VerticalLayout {
+            padding-top: Theme.spacing-md;
             spacing: Theme.spacing-xs;
-            alignment: start;
             for t in [
                 {i: 0, label: "General"},
                 {i: 1, label: "Plugins"},
@@ -83,9 +83,8 @@ export component ManagementWindow inherits Window {
                 {i: 3, label: "Windows"},
                 {i: 4, label: "About"},
             ]: Rectangle {
-                width: 96px;
+                height: 40px;
                 background: root.tab == t.i ? Theme.bg-selected : transparent;
-                border-radius: Theme.radius-md;
                 animate background { duration: Theme.anim-ms * 2ms / 3; }
                 TouchArea {
                     mouse-cursor: pointer;
@@ -104,14 +103,20 @@ export component ManagementWindow inherits Window {
                     height: parent.height;
                 }
             }
-            Rectangle { horizontal-stretch: 1; }
+            Rectangle { vertical-stretch: 1; }
             ThemedButton {
                 text: "Close";
                 clicked => { root.closed(); }
             }
         }
+    }
 
-        Rectangle { height: 1px; background: Theme.border-subtle; }
+    // ---- right detail (6/7) ----
+    Rectangle {
+        x: parent.width / 7;
+        width: parent.width * 6 / 7;
+        height: parent.height;
+        background: Theme.bg-canvas;
 
         // ---- General ----
         if root.tab == 0: VerticalLayout {
@@ -152,6 +157,7 @@ export component ManagementWindow inherits Window {
                 text: "No plugins installed. Drop a plugin folder with plugin.json into the plugins directory.";
                 color: Theme.text-tertiary;
                 font-size: Theme.type-secondary;
+                wrap: word-wrap;
             }
             for p in root.plugins: Rectangle {
                 height: 52px;
@@ -195,6 +201,7 @@ export component ManagementWindow inherits Window {
                 text: "No workflows installed. JSON definitions live in the workflows directory.";
                 color: Theme.text-tertiary;
                 font-size: Theme.type-secondary;
+                wrap: word-wrap;
             }
             for w in root.workflows: Rectangle {
                 height: 48px;
@@ -218,12 +225,14 @@ export component ManagementWindow inherits Window {
                     }
                 }
             }
-            ThemedButton {
-                text: "Open Graph Editor (in the launcher popup)";
+            Text {
+                text: "Tip: open the launcher and search 编辑器 to edit a workflow graph.";
+                color: Theme.text-tertiary;
+                font-size: Theme.type-caption;
             }
         }
 
-        // ---- Windows (P3.1-B1: discovered plugin windows + pin) ----
+        // ---- Windows (P3.1-B1/B2/B3) ----
         if root.tab == 3: VerticalLayout {
             padding: Theme.spacing-lg;
             spacing: Theme.spacing-xs;
@@ -254,9 +263,6 @@ export component ManagementWindow inherits Window {
                         }
                     }
                     Rectangle { horizontal-stretch: 1; }
-                    TouchArea {
-                        clicked => { root.follow-pick-hwnd = w.hwnd; }
-                    }
                     ThemedButton {
                         text: w.pinned ? "Unpin" : "Pin on top";
                         width: 110px;

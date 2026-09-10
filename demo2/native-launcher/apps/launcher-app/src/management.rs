@@ -4,6 +4,7 @@
 //! the window renders models and forwards actions upward; all logic lives
 //! here and in the APIs it calls.
 
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use launcher_domain::Category;
@@ -15,48 +16,46 @@ use crate::AppState;
 
 pub const PROVIDER_ID: &str = "management";
 
-/// The lazily created window. Slint windows must be created and touched on
-/// the UI thread; the Weak lives here and every mutation is dispatched via
-/// `slint::invoke_from_event_loop`.
-static WINDOW: std::sync::OnceLock<Mutex<Option<Weak<launcher_ui::ManagementWindow>>>> =
-    std::sync::OnceLock::new();
+thread_local! {
+    /// P3.1 lifecycle fix: the STRONG window handle lives in the UI thread's
+    /// thread-local (Slint handles are !Send — a static Mutex of the handle
+    /// is illegal). Close = park off-screen; reopen = show + recenter. The
+    /// window is created once and reused for the process lifetime.
+    static WIN: RefCell<Option<launcher_ui::ManagementWindow>> =
+        const { RefCell::new(None) };
+}
+
 static STATE: std::sync::OnceLock<Arc<Mutex<AppState>>> = std::sync::OnceLock::new();
 
 /// P3.1-B3 (EXPERIMENTAL): desktop-pinned plugin windows (WorkerW re-parent).
 static DESKTOP: std::sync::OnceLock<Mutex<std::collections::HashSet<isize>>> =
     std::sync::OnceLock::new();
 
-fn window_slot() -> &'static Mutex<Option<Weak<launcher_ui::ManagementWindow>>> {
-    WINDOW.get_or_init(|| Mutex::new(None))
-}
-
 /// Entry: open (or raise) the management window and refresh its models.
+/// Dispatches to the UI thread (Slint windows are UI-thread objects).
 pub fn open(state: Arc<Mutex<AppState>>) {
     let _ = STATE.set(state.clone());
-    let _ = slint::invoke_from_event_loop(move || {
-        let existing = window_slot()
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone());
-        let ui = match existing {
-            Some(w) => w.upgrade(),
-            None => match launcher_ui::ManagementWindow::new() {
+    let _ = slint::invoke_from_event_loop(open_on_ui_thread);
+}
+
+fn open_on_ui_thread() {
+    WIN.with(|slot| {
+        if slot.borrow().is_none() {
+            match launcher_ui::ManagementWindow::new() {
                 Ok(w) => {
                     wire(w.as_weak());
-                    if let Ok(mut slot) = window_slot().lock() {
-                        *slot = Some(w.as_weak());
-                    }
-                    Some(w)
+                    *slot.borrow_mut() = Some(w);
                 }
                 Err(e) => {
                     tracing::error!(error = %e, "management window create failed");
                     return;
                 }
-            },
-        };
-        if let Some(w) = ui {
+            }
+        }
+        if let Some(w) = slot.borrow().as_ref() {
             let _ = w.show();
-            refresh(&w);
+            crate::foreground::recenter_and_repaint(w.window());
+            refresh(w);
         }
     });
 }
@@ -173,11 +172,13 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
             }
         });
     });
-    let cb = weak.clone();
+    let weak2 = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |w| {
         w.on_closed(move || {
-            if let Some(w) = cb.upgrade() {
-                let _ = w.hide();
+            // P3.1 reopen fix: park off-screen, never hide/destroy (winit
+            // show/hide cycles leave windows invalid — popup lesson)
+            if let Some(x) = weak2.upgrade() {
+                park(&x);
             }
         });
     });
@@ -348,19 +349,22 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
 }
 
 /// Refresh from a non-UI thread (dispatch + model rebuild).
-fn refresh_threaded(
-    state: Arc<Mutex<AppState>>,
-    ui: Option<Weak<launcher_ui::ManagementWindow>>,
-) {
+/// Park off-screen (window stays mapped; reopen = show + recenter).
+fn park(ui: &launcher_ui::ManagementWindow) {
+    crate::foreground::park(ui.window());
+}
+
+fn refresh_threaded(_state: Arc<Mutex<AppState>>, ui: Option<Weak<launcher_ui::ManagementWindow>>) {
     let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = ui.and_then(|w| w.upgrade()) {
-            refresh(&ui);
-        } else if let Some(slot) = window_slot().lock().ok().and_then(|s| s.clone()) {
-            if let Some(w) = slot.upgrade() {
-                let _ = state;
-                refresh(&w);
-            }
+        if let Some(w) = ui.and_then(|w| w.upgrade()) {
+            refresh(&w);
+            return;
         }
+        WIN.with(|slot| {
+            if let Some(w) = slot.borrow().as_ref() {
+                refresh(w);
+            }
+        });
     });
 }
 
