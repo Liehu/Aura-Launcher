@@ -73,6 +73,7 @@
 | `154-p27-g-qa-matrix.md` | **P2.7 Batch 21**：G 线 QA 补强矩阵（G01–G05 十条集成测试；修复 Planning→Failed 白名单缺口与伪造 decision id 缺陷） | ✅ 863 tests |
 | `155-p27-h-completion.md` | **P2.7 Batch 22 + 完成宣告**：H03 质量语料（20 条冻结意图）+ H01 CI 载体确认 + H05 文档冻结；P2.7 完成（证书项后置） | ✅ 865 tests |
 | `156-pinyin-full-table.md` | **Pinyin 完整拼音表**：准确音节表（~800 常用字）table-first + FTS pinyin_full 列 + 老库自动迁移 + 全拼搜索 | ✅ 872 tests |
+| `157-p210-p0-hardening.md` | **P2.10 Batch 1**：P0 Hardening——Effect Authority token 门（消灭 confirmed 参数）、PID/HWND reuse 防护、Timeout/Unknown/Retry 统一语义、Replan 不重执行成功步骤 + 两份契约文档 | ✅ 880 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |

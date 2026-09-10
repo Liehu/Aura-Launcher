@@ -179,11 +179,15 @@ pub fn run_agent(
                     }
                 }
                 let _ = session.transition(AgentRunStatus::Executing, true);
-                // EXECUTE each step through the host (Resolver → Engine);
+                // EXECUTE each step through the host (Resolver → Engine).
                 // §25 replanning: on the first failure, re-plan once and
-                // re-execute the full plan from the start
+                // re-execute the plan — but P210-007 (§14-§16): steps that
+                // already SUCCEEDED are immutable and are NEVER re-executed;
+                // the replan effectively continues from the failure point.
                 let mut replanned = false;
                 let mut attempt = 0;
+                let mut step_status: std::collections::HashMap<String, launcher_domain::execution_semantics::StepStatus> =
+                    std::collections::HashMap::new();
                 loop {
                     let mut failure: Option<(String, String)> = None;
                     for step in &proposal.plan {
@@ -192,13 +196,28 @@ pub fn run_agent(
                             telemetry.finish(t0, LoopStop::Cancelled);
                             return LoopStop::Cancelled;
                         }
+                        // H3: immutable success — a succeeded effect is not
+                        // repeated, whatever the (re)plan says.
+                        if step_status.get(&step.step_id)
+                            == Some(&launcher_domain::execution_semantics::StepStatus::Succeeded)
+                        {
+                            continue;
+                        }
                         telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepStarted, &step.action_ref);
                         telemetry.metrics.tool_selection_count += 1;
                         match exec.execute(&step.action_ref, &step.input) {
                             Ok(_) => {
+                                step_status.insert(
+                                    step.step_id.clone(),
+                                    launcher_domain::execution_semantics::StepStatus::Succeeded,
+                                );
                                 telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepCompleted, &step.step_id);
                             }
                             Err(e) => {
+                                step_status.insert(
+                                    step.step_id.clone(),
+                                    launcher_domain::execution_semantics::StepStatus::Failed,
+                                );
                                 telemetry.event(now_ms(), crate::telemetry::AgentEvent::StepFailed, &step.step_id);
                                 failure = Some((step.step_id.clone(), e));
                                 break;

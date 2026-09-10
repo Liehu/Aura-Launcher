@@ -183,3 +183,16 @@ busy runtime 不可被 idle sweep / release 回收。
 由 definition 静态绑定）；ConditionEvaluator 纯函数无副作用；
 WorkflowLimits（max_steps=1000 / max_vars=256 / max_var_bytes=1MiB /
 max_expr_depth=32）是求值安全边界而非 runtime quota。
+
+---
+
+## P210 — Cross-System Hardening（157 号新增；contract: docs/contracts/）
+
+| ID | 不变量 | 锚点 / 测试 |
+|---|---|---|
+| INV-EFFECT-101 | Adapter 边界不存在 authority 参数——Win32 效果只能消费 engine 铸造的 `SystemAuthorization` token。 | `authorize_system_command` + `p210_tests::gate_refuses_unconfirmed` ✅ |
+| INV-EFFECT-102 | Timeout ≠ Failed——已开始的 effect 超时后 EffectState=Unknown。 | `execution_semantics::timeout_outcome` + `timeout_is_not_failure` ✅ |
+| INV-EFFECT-103 | Unknown + 非幂等 → 禁止自动重试；Succeeded → 禁止重复重试。 | `retry_decision` + `retry_matrix` ✅ |
+| INV-IDENTITY-101 | 动态目标（PID/HWND）在 effect 前必须重验身份；不匹配 = StaleTarget，绝不执行。 | `verify_process_identity` / `verify_window_identity` + `pid_reuse_is_detected`、`dead_hwnd_is_stale_target` ✅ |
+| INV-AGENT-101 | Replan 不得重执行 Succeeded 步骤——成功效果不可变。 | agent_loop step_status + `p210_replan_skips_succeeded_steps` ✅ |
+| INV-STATE-101 | 状态不承载授权：`Approved`/`Running` 等状态不产生 Capability/Effect 权威。 | 结构性（各 token 私有字段）+ 既有 G04 矩阵 ✅ |

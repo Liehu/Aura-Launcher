@@ -13,6 +13,7 @@ fn cmd(origin: &str, op: &str, risk: SystemRisk) -> SystemCommand {
         target: SystemTarget::Process {
             pid: 1,
             name: "x".into(),
+            creation_time_ms: None,
         },
         risk,
         origin: origin.into(),

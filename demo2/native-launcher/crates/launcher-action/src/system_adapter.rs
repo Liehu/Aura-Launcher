@@ -1,12 +1,14 @@
-//! Windows System Adapter (P2.9 — the deferred "Windows Adapter" batch,
-//! spec `P2.9 — System Integration & Automation 1.0 技术设计规范.md` §21):
-//! the ONLY place a validated [`SystemCommand`] becomes a real Win32 call.
+//! Windows System Adapter (P2.9 adapter batch + P210-003/006 hardening,
+//! spec `P2.10 — Cross-System Consistency & Security Hardening 1.0` §6-§11):
+//! the ONLY place a system command becomes a real Win32 call.
 //!
-//! Red lines kept intact:
-//! - the command must pass `SystemCommand::validate()` (frozen contract);
-//! - destructive/privileged operations additionally require the caller's
-//!   `confirmed = true` — the adapter is downstream of Policy, never a
-//!   policy authority of its own (mirrors `Action`'s INV-041 gate);
+//! Red lines:
+//! - the adapter accepts ONLY an [`SystemAuthorization`] minted by the
+//!   engine gate (`crate::authorize_system_command`) — it has no `confirmed`
+//!   parameter and no way to become an authority itself (§7);
+//! - dynamic targets are re-verified against their identity (§10/§11):
+//!   process creation time for PIDs, owning pid + liveness for HWNDs —
+//!   mismatch = `ActionError::StaleTarget`, never executed;
 //! - anything not in the frozen operation table resolves to
 //!   `ActionError::Unsupported` (fail-closed: unknown ≠ guessable);
 //! - observation operations (`list`/`enum`) are NOT effects and are not
@@ -14,23 +16,13 @@
 
 use launcher_domain::system::{SystemCapability, SystemCommand, SystemTarget};
 
-use crate::{ActionError, Effect};
+use crate::{ActionError, Effect, SystemAuthorization};
 
-/// Execute a validated system command through real Win32 calls.
-/// `confirmed` must carry the host's confirmation decision; destructive
-/// and privileged operations are refused without it.
-pub fn execute_system_command(
-    cmd: &SystemCommand,
-    confirmed: bool,
-) -> Result<Effect, ActionError> {
-    if cmd.validate().is_err() {
-        return Err(ActionError::Unsupported);
-    }
-    // The confirmation gate mirrors launcher-action's INV-041 choke point:
-    // an unconfirmed destructive command is refused BEFORE any OS call.
-    if cmd.risk.requires_confirmation() && !confirmed {
-        return Err(ActionError::ConfirmationRequired);
-    }
+/// Execute an engine-authorized system command through real Win32 calls.
+/// There is deliberately NO `confirmed` parameter: the confirmation policy
+/// was applied by `authorize_system_command` before this token existed.
+pub fn execute_authorized(auth: SystemAuthorization) -> Result<Effect, ActionError> {
+    let cmd: &SystemCommand = auth.command();
     match (cmd.capability, cmd.operation.as_str()) {
         (SystemCapability::Window, "focus") => window_focus(cmd),
         (SystemCapability::Window, "minimize") => window_show_minimize(cmd),
@@ -48,6 +40,81 @@ pub fn execute_system_command(
         // deliberately-unwired shell.run_command / notify — fails closed.
         _ => Err(ActionError::Unsupported),
     }
+}
+
+// ---- dynamic target identity (P210-006, §10/§11) ------------------------
+
+/// Verify a process target still IS the process observed at resolve time:
+/// open by pid, read the creation time, compare. Mismatch or death =
+/// StaleTarget (a reused pid must never be terminated).
+#[cfg(windows)]
+fn verify_process_identity(pid: u32, creation_time_ms: Option<i64>) -> Result<(), ActionError> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    if pid == 0 {
+        return Err(ActionError::Unsupported);
+    }
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+            .map_err(|_| ActionError::StaleTarget)?;
+        let mut creation = Default::default();
+        let mut exit = Default::default();
+        let mut kernel = Default::default();
+        let mut user = Default::default();
+        let ok = GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user);
+        let _ = CloseHandle(handle);
+        if ok.is_err() {
+            return Err(ActionError::StaleTarget);
+        }
+        let Some(expected) = creation_time_ms else {
+            return Ok(()); // no identity recorded — legacy command; accept
+        };
+        let ft = (u64::from(creation.dwHighDateTime) << 32) | u64::from(creation.dwLowDateTime);
+        let actual_ms = (ft / 10_000) as i64;
+        if actual_ms != expected {
+            tracing::warn!(pid, expected, actual_ms, "system.target stale (PID reuse)");
+            return Err(ActionError::StaleTarget);
+        }
+        Ok(())
+    }
+}
+
+/// Verify a window target still IS the window observed at resolve time:
+/// the HWND must be alive and, when an owning pid was recorded, belong to
+/// that process (HWND reuse across processes = StaleTarget).
+#[cfg(windows)]
+fn verify_window_identity(hwnd_raw: u64, expected_pid: Option<u32>) -> Result<(), ActionError> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow};
+    if hwnd_raw == 0 || hwnd_raw > isize::MAX as u64 {
+        return Err(ActionError::Unsupported);
+    }
+    let hwnd = HWND(hwnd_raw as *mut _);
+    unsafe {
+        if !IsWindow(hwnd).as_bool() {
+            return Err(ActionError::StaleTarget);
+        }
+        if let Some(expected) = expected_pid {
+            let mut pid: u32 = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != expected {
+                tracing::warn!(hwnd = hwnd_raw, expected, actual = pid, "system.target stale (HWND reuse)");
+                return Err(ActionError::StaleTarget);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn window_target(cmd: &SystemCommand) -> Result<(isize, Option<u32>), ActionError> {
+    let SystemTarget::Window { hwnd, title: _, pid } = &cmd.target else {
+        return Err(ActionError::Unsupported);
+    };
+    verify_window_identity(*hwnd, *pid)?;
+    Ok((*hwnd as isize, *pid))
 }
 
 // ---- uri ----------------------------------------------------------------
@@ -91,15 +158,10 @@ fn open_uri(cmd: &SystemCommand) -> Result<Effect, ActionError> {
 // ---- window -------------------------------------------------------------
 
 fn window_hwnd(cmd: &SystemCommand) -> Result<isize, ActionError> {
-    let SystemTarget::Window { hwnd, .. } = &cmd.target else {
-        return Err(ActionError::Unsupported);
-    };
-    // HWND values are pointer-sized; anything above that range is corrupt
-    // input from upstream enumeration and is refused.
-    if *hwnd == 0 || *hwnd > isize::MAX as u64 {
-        return Err(ActionError::Unsupported);
-    }
-    Ok(*hwnd as isize)
+    // P210-006 §11: liveness + owning-pid identity re-verified immediately
+    // before every window effect (HWND reuse = StaleTarget, never executed)
+    let (hwnd, _) = window_target(cmd)?;
+    Ok(hwnd)
 }
 
 fn window_focus(cmd: &SystemCommand) -> Result<Effect, ActionError> {
@@ -166,12 +228,12 @@ fn process_kill(cmd: &SystemCommand) -> Result<Effect, ActionError> {
     use windows::Win32::System::Threading::{
         OpenProcess, TerminateProcess, PROCESS_TERMINATE,
     };
-    let SystemTarget::Process { pid, name } = &cmd.target else {
+    let SystemTarget::Process { pid, name: _, creation_time_ms } = &cmd.target else {
         return Err(ActionError::Unsupported);
     };
-    if *pid == 0 {
-        return Err(ActionError::Unsupported);
-    }
+    // P210-006 §10: PID reuse check BEFORE the terminate — a reused pid
+    // belonging to a different process must never be killed.
+    verify_process_identity(*pid, *creation_time_ms)?;
     unsafe {
         // Open the process by pid; the pid came from the host's enumeration
         // snapshot and may be stale — a failed open is a clean error, never
@@ -183,10 +245,10 @@ fn process_kill(cmd: &SystemCommand) -> Result<Effect, ActionError> {
         let terminated = TerminateProcess(handle, 1);
         let _ = CloseHandle(handle);
         if terminated.is_err() {
-            tracing::warn!(pid, name, "system.process.kill failed");
+            tracing::warn!(pid, "system.process.kill failed");
             return Err(ActionError::Unsupported);
         }
-        tracing::info!(pid, name, "system.process.kill");
+        tracing::info!(pid, "system.process.kill");
     }
     Ok(Effect::SystemApplied("process.kill".into()))
 }
@@ -232,8 +294,15 @@ fn power_shutdown() -> Result<Effect, ActionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use launcher_domain::system_process_window::{process_command, window_command};
+    use crate::authorize_system_command;
+    use launcher_domain::system_process_window::{
+        process_command, window_command, window_command_with_identity,
+    };
     use launcher_domain::system::{SystemRisk, SystemTarget};
+
+    fn run(cmd: &SystemCommand, confirmed: bool) -> Result<Effect, ActionError> {
+        execute_authorized(authorize_system_command(cmd, confirmed)?)
+    }
 
     /// The confirmation gate: destructive/privileged commands are refused
     /// BEFORE any OS call when `confirmed` is false.
@@ -241,12 +310,12 @@ mod tests {
     fn destructive_requires_confirmation() {
         let close = window_command(1234, "Notepad", "close", "test").unwrap();
         assert!(matches!(
-            execute_system_command(&close, false),
+            run(&close, false),
             Err(ActionError::ConfirmationRequired)
         ));
         let kill = process_command(4242, "evil.exe", "kill", "test").unwrap();
         assert!(matches!(
-            execute_system_command(&kill, false),
+            run(&kill, false),
             Err(ActionError::ConfirmationRequired)
         ));
         let shutdown = SystemCommand {
@@ -257,7 +326,7 @@ mod tests {
             origin: "test".into(),
         };
         assert!(matches!(
-            execute_system_command(&shutdown, false),
+            run(&shutdown, false),
             Err(ActionError::ConfirmationRequired)
         ));
     }
@@ -269,12 +338,12 @@ mod tests {
         let ghost = SystemCommand {
             capability: SystemCapability::Window,
             operation: "teleport".into(),
-            target: SystemTarget::Window { hwnd: 1, title: "x".into() },
+            target: SystemTarget::Window { hwnd: 1, title: "x".into(), pid: None },
             risk: SystemRisk::Info,
             origin: "test".into(),
         };
         assert!(matches!(
-            execute_system_command(&ghost, true),
+            run(&ghost, true),
             Err(ActionError::Unsupported)
         ));
         let bad_uri = SystemCommand {
@@ -285,7 +354,7 @@ mod tests {
             origin: "test".into(),
         };
         assert!(matches!(
-            execute_system_command(&bad_uri, true),
+            run(&bad_uri, true),
             Err(ActionError::Unsupported)
         ));
         // Commands that pass the domain builders' taxonomy but fail the
@@ -293,12 +362,12 @@ mod tests {
         let invalid = SystemCommand {
             capability: SystemCapability::Window,
             operation: "BAD_OP".into(),
-            target: SystemTarget::Window { hwnd: 1234, title: "Notepad".into() },
+            target: SystemTarget::Window { hwnd: 1234, title: "Notepad".into(), pid: None },
             risk: SystemRisk::Info,
             origin: "test".into(),
         };
         assert!(matches!(
-            execute_system_command(&invalid, true),
+            run(&invalid, true),
             Err(ActionError::Unsupported)
         ));
     }
@@ -309,13 +378,60 @@ mod tests {
     fn observation_operations_are_not_effects() {
         let list = process_command(1, "x", "list", "test").unwrap();
         assert!(matches!(
-            execute_system_command(&list, true),
+            run(&list, true),
             Err(ActionError::Unsupported)
         ));
         let enm = window_command(1, "x", "enum", "test").unwrap();
         assert!(matches!(
-            execute_system_command(&enm, true),
+            run(&enm, true),
             Err(ActionError::Unsupported)
+        ));
+    }
+}
+
+#[cfg(test)]
+mod p210_tests {
+    use super::*;
+    use crate::authorize_system_command;
+    use launcher_domain::system_process_window::process_command_with_identity;
+
+    /// P210-006 §10: a PID whose creation time no longer matches the
+    /// resolve-time identity is StaleTarget — never terminated. Uses the
+    /// CURRENT process as the live target with a wrong creation time.
+    #[test]
+    fn pid_reuse_is_detected() {
+        let live_pid = std::process::id();
+        let kill =
+            process_command_with_identity(live_pid, "self.exe", Some(1), "kill", "test").unwrap();
+        let auth = authorize_system_command(&kill, true).unwrap();
+        assert!(matches!(execute_authorized(auth), Err(ActionError::StaleTarget)));
+    }
+
+    /// P210-006 §11: a dead HWND is StaleTarget even before any effect.
+    #[test]
+    fn dead_hwnd_is_stale_target() {
+        let close = launcher_domain::system_process_window::window_command_with_identity(
+            0xDEAD_BEEF,
+            "Ghost",
+            None,
+            "close",
+            "test",
+        )
+        .unwrap();
+        let auth = authorize_system_command(&close, true).unwrap();
+        assert!(matches!(execute_authorized(auth), Err(ActionError::StaleTarget)));
+    }
+
+    /// The gate itself: unconfirmed destructive commands never mint a token.
+    #[test]
+    fn gate_refuses_unconfirmed() {
+        let kill = launcher_domain::system_process_window::process_command(
+            4242, "evil.exe", "kill", "test",
+        )
+        .unwrap();
+        assert!(matches!(
+            authorize_system_command(&kill, false),
+            Err(ActionError::ConfirmationRequired)
         ));
     }
 }

@@ -368,3 +368,62 @@ fn g05_sanitize_corpus() {
 fn g05_remote_gate_default_shut() {
     assert!(RemoteAiPolicy::default().ensure_remote_allowed().is_err());
 }
+
+// ---- P210-007 (H3): Replan never re-executes succeeded effects ----------
+
+#[test]
+fn p210_replan_skips_succeeded_steps() {
+    const PLAN: &str = r#"{
+        "proposal_id": "p", "session_id": "p210",
+        "user_goal": "g", "intent": "execute",
+        "confidence": 0.9,
+        "plan": [
+            {"step_id": "a", "action_ref": "command:app:first", "input": {}},
+            {"step_id": "b", "action_ref": "command:app:second", "input": {}}
+        ]
+    }"#;
+    fn llm(_p: String) -> Result<String, String> {
+        Ok(PLAN.into())
+    }
+    /// step `a` succeeds; step `b` fails exactly once (the original
+    /// attempt), then succeeds on the replan retry.
+    struct FlakySecondHost {
+        b_attempts: u32,
+    }
+    impl TurnExecutor for FlakySecondHost {
+        fn execute(
+            &mut self,
+            action_ref: &str,
+            _input: &serde_json::Value,
+        ) -> Result<serde_json::Value, String> {
+            if action_ref.ends_with("first") {
+                return Ok(serde_json::json!({"ok": true}));
+            }
+            self.b_attempts += 1;
+            if self.b_attempts == 1 {
+                Err("transient".into())
+            } else {
+                Ok(serde_json::json!({"ok": true}))
+            }
+        }
+    }
+    let mut session = AgentSession::new("p210", 8);
+    let mut host = FlakySecondHost { b_attempts: 0 };
+    let cancel = AtomicBool::new(false);
+    let mut telemetry = Telemetry::default();
+    let stop = run_agent(
+        &mut session, "g", "", "[]", &llm, &mut host, &cancel,
+        &ClarificationPolicy::default(), 256, &mut NoApprovalSink, &mut telemetry,
+    );
+    assert_eq!(stop, LoopStop::Completed);
+    // THE INVARIANT: `a` executed exactly once even though the plan was
+    // re-run after `b`'s failure (old semantics: a, b, a, b = 4 executions)
+    assert_eq!(host.b_attempts, 2, "b: original failure + replan retry");
+    let started = telemetry
+        .log
+        .records()
+        .iter()
+        .filter(|r| r.event == AgentEvent::StepStarted && r.detail.ends_with("first"))
+        .count();
+    assert_eq!(started, 1, "succeeded step must never be re-executed on replan");
+}

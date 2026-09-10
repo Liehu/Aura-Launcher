@@ -22,6 +22,10 @@ pub enum ActionError {
     Disabled(String),
     #[error("confirmation required")]
     ConfirmationRequired,
+    /// P210-006: the dynamic target's identity no longer matches what was
+    /// observed at resolve time (PID/HWND reuse) — the effect is refused.
+    #[error("stale target: identity changed since resolve")]
+    StaleTarget,
     #[error("clipboard error: {0}")]
     Clipboard(String),
 }
@@ -106,17 +110,52 @@ pub enum Effect {
 #[cfg(windows)]
 pub mod system_adapter;
 
+// ---- P210-003: Effect Authority gate (spec §6/§7) -----------------------
+//
+// `confirmed: bool` must never be an authority credential at the adapter
+// boundary. The ONLY way to reach the real Win32 adapter is to mint a
+// `SystemAuthorization` here — in the engine crate, after the frozen
+// contract validation and the confirmation gate — and hand it to
+// `system_adapter::execute_authorized`. External code has no public path
+// from (command, bool) to an OS effect.
+
+/// Opaque authorization token: proof that ONE validated system command has
+/// passed the engine's confirmation gate. Cannot be constructed outside
+/// this crate (private field).
+pub struct SystemAuthorization {
+    cmd: launcher_domain::system::SystemCommand,
+}
+
+impl SystemAuthorization {
+    /// Read-only view for audit/logging; carries no extra authority.
+    pub fn command(&self) -> &launcher_domain::system::SystemCommand {
+        &self.cmd
+    }
+}
+
+/// The engine-side gate: validates the command and applies the
+/// confirmation policy, minting the single-use authorization token the
+/// adapter consumes. This is the ONLY public constructor.
+pub fn authorize_system_command(
+    cmd: &launcher_domain::system::SystemCommand,
+    confirmed: bool,
+) -> Result<SystemAuthorization, ActionError> {
+    if cmd.validate().is_err() {
+        return Err(ActionError::Unsupported);
+    }
+    if cmd.risk.requires_confirmation() && !confirmed {
+        return Err(ActionError::ConfirmationRequired);
+    }
+    Ok(SystemAuthorization { cmd: cmd.clone() })
+}
+
 /// Non-Windows stub: the adapter is Windows-only by definition; every
-/// command resolves to Unsupported (fail-closed).
+/// authorization resolves to Unsupported (fail-closed).
 #[cfg(not(windows))]
 pub mod system_adapter {
-    use crate::{ActionError, Effect};
-    use launcher_domain::system::SystemCommand;
+    use crate::{ActionError, Effect, SystemAuthorization};
 
-    pub fn execute_system_command(
-        _cmd: &SystemCommand,
-        _confirmed: bool,
-    ) -> Result<Effect, ActionError> {
+    pub fn execute_authorized(_auth: SystemAuthorization) -> Result<Effect, ActionError> {
         Err(ActionError::Unsupported)
     }
 }

@@ -46,11 +46,32 @@ impl SystemRisk {
 
 /// §8 SystemTarget: WHAT the command acts on, as a typed identity — never a
 /// raw command string. Path targets are normalized upstream.
+///
+/// P210-006 (spec §10/§11): dynamic targets carry IDENTITY, not just
+/// handles. A bare PID/HWND can be reused by a different process/window
+/// between resolve and execute; the optional identity fields are verified
+/// by the adapter immediately before the effect (mismatch = StaleTarget,
+/// never executed). `None` keeps legacy constructors valid — producers
+/// SHOULD populate them when the identity was observed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SystemTarget {
-    Process { pid: u32, name: String },
-    Window { hwnd: u64, title: String },
+    Process {
+        pid: u32,
+        name: String,
+        /// Process creation time (ms) observed at resolve; PID reuse
+        /// changes it while the pid itself stays.
+        #[serde(default)]
+        creation_time_ms: Option<i64>,
+    },
+    Window {
+        hwnd: u64,
+        title: String,
+        /// Owning pid observed at resolve; a destroyed-and-recreated HWND
+        /// may belong to another process.
+        #[serde(default)]
+        pid: Option<u32>,
+    },
     File { path: String },
     Uri { scheme: String },
     System { setting: String },

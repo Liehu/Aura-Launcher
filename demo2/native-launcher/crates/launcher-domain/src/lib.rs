@@ -3,6 +3,7 @@
 //! This crate must stay free of OS and IO dependencies.
 
 pub mod expr;
+pub mod execution_semantics;
 pub mod pinyin;
 pub mod pinyin_table;
 pub mod failure;

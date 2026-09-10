@@ -29,14 +29,28 @@ pub fn window_risk(operation: &str) -> Option<SystemRisk> {
 }
 
 /// Build a validated process command. `None` for unknown operations
-/// (fail-closed: the Windows Adapter batch will extend the taxonomy).
+/// (fail-closed). P210-006: prefer [`process_command_with_identity`] —
+/// a bare pid is vulnerable to PID reuse between resolve and execute.
 pub fn process_command(pid: u32, name: &str, operation: &str, origin: &str) -> Option<SystemCommand> {
+    process_command_with_identity(pid, name, None, operation, origin)
+}
+
+/// Identity-carrying variant: `creation_time_ms` is verified by the
+/// adapter immediately before the effect (PID reuse = StaleTarget).
+pub fn process_command_with_identity(
+    pid: u32,
+    name: &str,
+    creation_time_ms: Option<i64>,
+    operation: &str,
+    origin: &str,
+) -> Option<SystemCommand> {
     Some(SystemCommand {
         capability: SystemCapability::Process,
         operation: operation.into(),
         target: SystemTarget::Process {
             pid,
             name: name.into(),
+            creation_time_ms,
         },
         risk: process_risk(operation)?,
         origin: origin.into(),
@@ -44,14 +58,28 @@ pub fn process_command(pid: u32, name: &str, operation: &str, origin: &str) -> O
 }
 
 /// Build a validated window command (hwnd supplied by the host's window
-/// enumeration — adapters own raw handles).
+/// enumeration — adapters own raw handles). P210-006: prefer
+/// [`window_command_with_identity`] — HWNDs can be reused across processes.
 pub fn window_command(hwnd: u64, title: &str, operation: &str, origin: &str) -> Option<SystemCommand> {
+    window_command_with_identity(hwnd, title, None, operation, origin)
+}
+
+/// Identity-carrying variant: `pid` (owner at resolve time) is verified by
+/// the adapter immediately before the effect (HWND reuse = StaleTarget).
+pub fn window_command_with_identity(
+    hwnd: u64,
+    title: &str,
+    pid: Option<u32>,
+    operation: &str,
+    origin: &str,
+) -> Option<SystemCommand> {
     Some(SystemCommand {
         capability: SystemCapability::Window,
         operation: operation.into(),
         target: SystemTarget::Window {
             hwnd,
             title: title.into(),
+            pid,
         },
         risk: window_risk(operation)?,
         origin: origin.into(),
