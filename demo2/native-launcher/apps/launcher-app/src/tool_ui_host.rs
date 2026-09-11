@@ -60,7 +60,7 @@ fn open_ui_root(ui: &serde_json::Value) -> UiNode {
         })
 }
 
-// ---- session state (UI-thread lifetime) ---------------------------------
+// ---- session state (cross-thread: PluginHandle is Send) ------------------
 
 struct ToolSession {
     handle: PluginHandle,
@@ -70,9 +70,48 @@ struct ToolSession {
     tool_id: String,
 }
 
-thread_local! {
-    static TOOL_SESSION: std::cell::RefCell<Option<ToolSession>> =
-        const { std::cell::RefCell::new(None) };
+static TOOL_SESSION: std::sync::Mutex<Option<ToolSession>> =
+    std::sync::Mutex::new(None);
+
+/// Relay a tool event to the plugin and apply any UI update from the
+/// response.
+fn do_relay_event(
+    session: &mut ToolSession,
+    ui_weak: Weak<launcher_ui::AppWindow>,
+    node_id: &str,
+    event: &str,
+    value: &str,
+) {
+    let e = launcher_domain::tool::UiEvent {
+        session_id: session.session_id.clone(),
+        event_id: format!(
+            "ev-{}-{}",
+            node_id,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_micros())
+                .unwrap_or(0)
+        ),
+        node_id: node_id.to_string(),
+        event: event.to_string(),
+        value: serde_json::Value::String(value.to_string()),
+    };
+    match session.handle.tool_event(&e) {
+        Ok(result) => {
+            if let Some(update) = result.get("ui") {
+                let root = open_ui_root(update);
+                let nodes = flatten(&UiSchema { schema_version: 1, root });
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        ui.set_tool_nodes(slint::ModelRc::new(std::rc::Rc::new(
+                            slint::VecModel::from(nodes),
+                        )));
+                    }
+                });
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "tool.event failed"),
+    }
 }
 
 /// Open a tool: spawn the plugin, send `tool.open`, render the UI schema.
@@ -132,13 +171,13 @@ pub fn open_tool(
                 Ok(open) => {
                     let root = open_ui_root(&open.ui);
                     let nodes = flatten(&UiSchema { schema_version: 1, root });
-                    TOOL_SESSION.with(|slot| {
-                        *slot.borrow_mut() = Some(ToolSession {
-                            handle,
-                            session_id,
-                            tool_id: tool_id.clone(),
-                        });
-                    });
+            if let Ok(mut ts) = TOOL_SESSION.lock() {
+                *ts = Some(ToolSession {
+                    handle,
+                    session_id,
+                    tool_id: tool_id.clone(),
+                });
+            }
                     let title2 = tool_id.clone();
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak.upgrade() {
@@ -169,49 +208,34 @@ pub fn relay_event(
     event: &str,
     value: &str,
 ) {
-    TOOL_SESSION.with(|slot| {
-        let mut borrow = slot.borrow_mut();
-        let Some(session) = borrow.as_mut() else { return };
-        let e = launcher_domain::tool::UiEvent {
-            session_id: session.session_id.clone(),
-            event_id: format!(
-                "ev-{}-{}",
-                node_id,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_micros())
-                    .unwrap_or(0)
-            ),
-            node_id: node_id.to_string(),
-            event: event.to_string(),
-            value: serde_json::Value::String(value.to_string()),
-        };
-        match session.handle.tool_event(&e) {
-            Ok(result) => {
-                if let Some(update) = result.get("ui") {
-                    let root = open_ui_root(update);
-                    let nodes = flatten(&UiSchema { schema_version: 1, root });
-                    let _ = slint::invoke_from_event_loop(move || {
-                        if let Some(ui) = ui_weak.upgrade() {
-                            ui.set_tool_nodes(slint::ModelRc::new(std::rc::Rc::new(
-                                slint::VecModel::from(nodes),
-                            )));
-                        }
-                    });
-                }
-            }
-            Err(e) => tracing::warn!(error = %e, "tool.event failed"),
-        }
-    });
+    // IPC on worker thread; UI update posted back via event loop
+    let node_id = node_id.to_string();
+    let event = event.to_string();
+    let value = value.to_string();
+    std::thread::Builder::new()
+        .name("tool-event".into())
+        .spawn(move || {
+            let Ok(mut guard) = TOOL_SESSION.lock() else { return };
+            let Some(session) = guard.as_mut() else { return };
+            do_relay_event(session, ui_weak.clone(), &node_id, &event, &value);
+        })
+        .expect("spawn tool-event");
 }
 
 /// Close the active tool session (send tool.close + cleanup).
 pub fn close_session(ui_weak: Weak<launcher_ui::AppWindow>) {
-    TOOL_SESSION.with(|slot| {
-        if let Some(mut session) = slot.borrow_mut().take() {
-            let _ = session.handle.tool_close(&session.session_id);
-        }
-    });
+    // send tool.close on a worker thread
+    std::thread::Builder::new()
+        .name("tool-close".into())
+        .spawn(move || {
+            let Ok(mut guard) = TOOL_SESSION.lock() else { return };
+            if let Some(session) = guard.as_mut() {
+                let sid = session.session_id.clone();
+                let _ = session.handle.tool_close(&sid);
+                tracing::debug!(session = %sid, "tool.session_closed");
+            }
+        })
+        .ok();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_weak.upgrade() {
             ui.set_tool_visible(false);
