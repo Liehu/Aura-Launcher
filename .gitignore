@@ -19,3 +19,6 @@ vrtest/
 # OS noise
 Thumbs.db
 Desktop.ini
+
+# UI refresh 2026-09 visual regression evidence (PNG/BMP captures, ~280MB)
+.openclaw-baseline/
