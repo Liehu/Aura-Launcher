@@ -2740,6 +2740,7 @@ dependencies = [
  "launcher-indexer",
  "launcher-ipc",
  "launcher-mcp",
+ "launcher-plugin-host",
  "launcher-providers",
  "launcher-search",
  "launcher-ui",

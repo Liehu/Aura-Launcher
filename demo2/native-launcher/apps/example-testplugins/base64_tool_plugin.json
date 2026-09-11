@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "com.example.base64",
+  "name": "Base64 Tool",
+  "version": "1.0.0",
+  "api_version": "0.1",
+  "window": true,
+  "runtime": { "type": "python", "executable": "base64_tool.py" },
+  "capabilities": [],
+  "timeout_ms": 3000,
+  "idle_timeout_ms": 30000,
+  "tools": [
+    {
+      "id": "base64",
+      "name": "Base64 Tool",
+      "schema_version": 1,
+      "entry": { "type": "interactive" }
+    }
+  ]
+}

@@ -15,6 +15,7 @@ mod agent_service;
 mod autostart;
 mod management;
 mod settings_ui;
+mod tool_ui_host;
 mod editor_surface;
 mod keyboard_walkthrough;
 mod win_platform;
@@ -199,6 +200,8 @@ fn build_core(
     core.register(Box::new(settings_ui::SettingsUiProvider));
     // P3.1-B0: management window entry command
     core.register(Box::new(management::ManagementCommandProvider));
+    // P3-UI.1: tool surface entry command
+    core.register(Box::new(tool_ui_host::ToolCommandProvider));
 
     // the indexer connection doubles as the bounded history sink (WAL)
     core.set_history(indexer);
@@ -1336,6 +1339,7 @@ fn execute_action_by_id(
                     || c.provider_id == "editor"
                     || c.provider_id == "settings-ui"
                     || c.provider_id == "management"
+                    || c.provider_id == "tool-open"
             })
             .map(|c| (c.provider_id.clone(), c.target.clone()))
             .unwrap_or_default()
@@ -1362,6 +1366,15 @@ fn execute_action_by_id(
         ("management", _) => {
             // P3.1-B0: open the standalone management window
             management::open(state);
+            return;
+        }
+        ("tool-open", Some(path)) => {
+            // P3-UI.1: open the tool surface from the manifest
+            tool_ui_host::open_tool(std::path::Path::new(&path), "base64", ui_weak.clone());
+            if let Some(ui) = ui_weak.upgrade() {
+                let _ = ui.show();
+                ui.invoke_focus_keys();
+            }
             return;
         }
         ("editor", _) => {
@@ -2277,6 +2290,17 @@ fn main() -> anyhow::Result<()> {
                 if let Some(ui) = cb.upgrade() {
                     ui.invoke_focus_input();
                 }
+            });
+        }
+        // P3-UI.1: tool surface event + close callbacks
+        {
+            let cb_tool = ui_weak.clone();
+            ui.on_tool_event(move |node_id, event, value| {
+                tool_ui_host::relay_event(cb_tool.clone(), &node_id, &event, &value);
+            });
+            let cb_close = ui_weak.clone();
+            ui.on_tool_surface_closed(move || {
+                tool_ui_host::close_session(cb_close.clone());
             });
         }
         // Esc in the panel = Cancel: a pending confirmation is never

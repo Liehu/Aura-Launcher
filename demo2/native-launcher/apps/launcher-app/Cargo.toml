@@ -17,6 +17,7 @@ launcher-search = { workspace = true }
 launcher-ui = { workspace = true }
 launcher-ai = { workspace = true }
 launcher-ipc = { workspace = true }
+launcher-plugin-host = { workspace = true }
 slint = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

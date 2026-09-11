@@ -97,6 +97,7 @@
 | `170-p3ui0-testkit.md` | **P3-UI.0 尾款**：testkit crate（契约 fixture 套件）+ README/ARCHITECTURE 18-crate 对齐 | ✅ 924 tests |
 | `171-p3ui0-tail-metadata-dispatch.md` | **P3-UI.0 尾款 II**：plugin_registry 三张元数据表 + plugin-host tool.* 分发 + Workflow ToolReference 类型接线 | ✅ 925 tests |
 | `172-p3ui1-tool-ui-host.md` | **P3-UI.1 Tool UI Host**：声明式 UiSchema → Slint 渲染（ToolSurface 组件 + AppWindow 集成 + 扁平化投影） | ✅ 925 tests |
+| `173-p3ui1-base64-tool.md` | **P3-UI.1 尾款**：Base64 示例工具插件 + 弹窗入口接线 + tool event/close 回调 | ✅ 925 tests |
 | `139-p27-batch12-proposal-builder.md` | **P2.7 Batch 12**：B04 Action Proposal Builder（Intent→Proposal 桥接） | ✅ 811 tests |
 | `142-p27-batch15-session-store.md` | **P2.7 Batch 15**：C07 Agent Session Store（SQLite 持久化/恢复扫描/损坏重建） | ✅ 820 tests |
 | `144-p29-d06-pinyin.md` | **P2.7 D 线触发源 helpers + A04 Pinyin 首字母** | ✅ 824 tests |
