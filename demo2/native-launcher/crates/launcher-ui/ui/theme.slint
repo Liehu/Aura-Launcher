@@ -1,4 +1,7 @@
 // theme.slint — VISUAL-DESIGN-SPEC-v0.1 §2/§3/§4/§5: the single source of
+// truth. P3-UX round 2 (rubick-referenced refresh): softer surface
+// layering, Takram-style radius hierarchy, rubick-aligned row metrics.
+//  — the single source of
 // truth for colors, radius, spacing, and typography. Components MUST use
 // these tokens; scattered hex literals are forbidden (Spec Rule 1).
 // Semantic names are theme-neutral so Light/High-Contrast themes can reuse
@@ -21,16 +24,16 @@ export global Theme {
 
     // ---- Surface (Spec §2.1) ----
     out property <color> bg-canvas: light-theme ? #F7F9FC : #0B1017;             // launcher background
-    out property <color> bg-surface: light-theme ? #FFFFFF : #111822;            // main content surface
-    out property <color> bg-surface-elevated: light-theme ? #FFFFFF : #16202C;   // elevated / hover surface
-    out property <color> bg-input: light-theme ? #FFFFFF : #0F1721;              // search box
-    out property <color> bg-selected: light-theme ? #D6E8FF : #173F73;           // selected row
-    out property <color> bg-selected-hover: light-theme ? #C4DEFF : #1B4A86;     // selected + hover
+    out property <color> bg-surface: light-theme ? #FFFFFF : #121A26;            // main content surface
+    out property <color> bg-surface-elevated: light-theme ? #FFFFFF : #18222F;   // elevated / hover surface
+    out property <color> bg-input: light-theme ? #FFFFFF : #131C28;              // search box
+    out property <color> bg-selected: light-theme ? #DCEDFF : #1D4478;           // selected row
+    out property <color> bg-selected-hover: light-theme ? #CCE5FF : #215084;     // selected + hover
     out property <color> bg-disabled: light-theme ? #F0F2F5 : #10161E;           // disabled row
 
     // ---- Border (Spec §2.2) ----
-    out property <color> border-default: light-theme ? #D8DEE6 : #26323F;
-    out property <color> border-subtle: light-theme ? #E6EAF0 : #1E2833;
+    out property <color> border-default: light-theme ? #DCE2EA : #2B3644;
+    out property <color> border-subtle: light-theme ? #E8ECF2 : #212B37;
     out property <color> border-focus: light-theme ? #2E7FE8 : #4DA3FF;          // keyboard focus
     out property <color> border-warning: light-theme ? #B87400 : #FFB547;        // confirmation
     out property <color> border-error: light-theme ? #D63A3A : #FF5C5C;
@@ -53,9 +56,9 @@ export global Theme {
     out property <color> semantic-info: light-theme ? #2E7FE8 : #5AA9FF;
 
     // ---- Radius (Spec §5) ----
-    out property <length> radius-small: 4px;   // badge / shortcut
-    out property <length> radius-medium: 6px;  // search / row
-    out property <length> radius-large: 8px;   // launcher surface (P1: window)
+    out property <length> radius-small: 6px;   // badge / shortcut
+    out property <length> radius-medium: 10px; // search / row
+    out property <length> radius-large: 14px;  // launcher surface (P1: window)
 
     // ---- Spacing scale (Spec §4) ----
     out property <length> space-1: 4px * ui-scale;
@@ -75,12 +78,12 @@ export global Theme {
     out property <int> rows-visible-default: 6;
     out property <int> rows-visible-min: 4;
     out property <int> rows-visible-max: 8;
-    out property <length> row-search: 36px * ui-scale;
+    out property <length> row-search: 52px * ui-scale;
     out property <length> padding-window: 8px * ui-scale;
 
     // ---- Row heights (Spec §4.2) ----
-    out property <length> row-main: 44px * ui-scale;
-    out property <length> row-action: 40px * ui-scale;
+    out property <length> row-main: 56px * ui-scale;
+    out property <length> row-action: 44px * ui-scale;
     out property <length> row-context: 28px * ui-scale;
     out property <length> row-status: 28px * ui-scale;
     out property <length> row-workflow-step: 36px * ui-scale;
@@ -107,8 +110,8 @@ export global Theme {
     out property <length> spacing-xl: 32px * ui-scale;
 
     // ---- Radius (§40: short aliases) ----
-    out property <length> radius-sm: 4px;
-    out property <length> radius-md: 6px;
+    out property <length> radius-sm: 6px;
+    out property <length> radius-md: 10px;
 
     // ---- State palette (§40): status colors reserved for StateBadge /
     // StateSymbol rendering; components must not pick ad-hoc status colors.
