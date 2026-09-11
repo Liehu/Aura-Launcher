@@ -275,6 +275,9 @@ pub fn apply(ui: &launcher_ui::AppWindow, st: &DemoState) {
             icon: String::new().into(),
             score: String::new().into(),
             icon_data: slint::Image::default(),
+            title_before: String::new().into(),
+            title_match: String::new().into(),
+            title_after: String::new().into(),
         })
         .collect();
     ui.set_results(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(

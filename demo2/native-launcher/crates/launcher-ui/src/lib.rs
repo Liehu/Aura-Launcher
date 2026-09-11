@@ -14,18 +14,65 @@ pub fn to_result_items(
     items: impl IntoIterator<Item = launcher_domain::Command>,
     limit: usize,
 ) -> Vec<ResultItem> {
+    to_result_items_with_query(items, limit, "")
+}
+
+/// P3-UX: to_result_items with match highlighting. Finds the first
+/// case-insensitive occurrence of `query` in the title and sets
+/// match_start/match_len for the Slint renderer to highlight.
+pub fn to_result_items_with_query(
+    items: impl IntoIterator<Item = launcher_domain::Command>,
+    limit: usize,
+    query: &str,
+) -> Vec<ResultItem> {
+    let q_lower = query.to_lowercase();
+    let q_empty = q_lower.is_empty();
     items
         .into_iter()
         .take(limit)
-        .map(|c| ResultItem {
-            command_id: c.id.into(),
-            title: c.title.into(),
-            subtitle: c.subtitle.unwrap_or_default().into(),
-            icon: c.icon.unwrap_or_default().into(),
-            score: format!("{:.2}", c.score).into(),
-            // P2.1-E5: filled asynchronously by the host icon pipeline;
-            // empty = 20px placeholder slot (no layout reflow)
-            icon_data: Default::default(),
+        .map(|c| {
+            // P3-UX: pre-split title into before/match/after for Slint
+            let title_lower = c.title.to_lowercase();
+            let (t_before, t_match, t_after) = if q_empty {
+                (String::new(), String::new(), c.title.clone())
+            } else {
+                match title_lower.find(&q_lower) {
+                    Some(byte_pos) => {
+                        let chars: Vec<char> = c.title.chars().collect();
+                        let mut char_idx = 0;
+                        let mut before = String::new();
+                        let mut matched = String::new();
+                        for (ci, ch) in chars.iter().enumerate() {
+                            if char_idx >= byte_pos && char_idx < byte_pos + q_lower.len() {
+                                matched.push(*ch);
+                            } else {
+                                before.push(*ch);
+                            }
+                            char_idx += ch.len_utf8();
+                            let _ = ci;
+                        }
+                        let after = if before.len() + matched.len() < c.title.len() {
+                            c.title[before.len() + matched.len()..].to_string()
+                        } else {
+                            String::new()
+                        };
+                        (before, matched, after)
+                    }
+                    None => (String::new(), String::new(), c.title.clone()),
+                }
+            };
+            let _has_match = !t_match.is_empty();
+            ResultItem {
+                command_id: c.id.into(),
+                title: c.title.clone().into(),
+                title_before: t_before.into(),
+                title_match: t_match.into(),
+                title_after: t_after.into(),
+                subtitle: c.subtitle.unwrap_or_default().into(),
+                icon: c.icon.unwrap_or_default().into(),
+                score: format!("{:.2}", c.score).into(),
+                icon_data: Default::default(),
+            }
         })
         .collect()
 }

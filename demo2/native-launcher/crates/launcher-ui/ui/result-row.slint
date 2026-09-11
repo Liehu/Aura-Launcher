@@ -13,6 +13,11 @@ export struct ResultItem {
     // P2.1-E5: async-loaded icon (empty image = placeholder, no reflow —
     // the 20px slot is always reserved)
     icon-data: image,
+    // P3-UX: title pre-split into 3 segments for match highlighting
+    // (Rust-side splits; Slint renders with accent color on match)
+    title-before: string,
+    title-match: string,
+    title-after: string,
 }
 
 export component ResultRow inherits Rectangle {
@@ -46,7 +51,35 @@ export component ResultRow inherits Rectangle {
 
         VerticalLayout {
             alignment: center;
-            Text {
+            // P3-UX match highlight: render 3 segments, match in accent
+            if item.title-match != "": HorizontalLayout {
+                spacing: 0px;
+                alignment: start;
+                Text {
+                    text: item.title-before;
+                    color: Theme.text-primary;
+                    font-size: Theme.type-title;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: item.title-match;
+                    color: Theme.accent-primary;
+                    font-weight: 700;
+                    font-size: Theme.type-title;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: item.title-after;
+                    color: Theme.text-primary;
+                    font-size: Theme.type-title;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+            }
+            // no match: plain title
+            if item.title-match == "": Text {
                 text: item.title;
                 color: Theme.text-primary;
                 font-size: Theme.type-title;
