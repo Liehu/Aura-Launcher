@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aura-Launcher UI Refresh 2026-09 · 交接总览</title>
+<style>
+  :root {
+    --canvas: #F7F9FC; --surface: #FFFFFF; --ink: #1A2430; --ink-2: #55606E;
+    --ink-3: #7A8595; --line: #DCE2EA; --line-soft: #E8ECF2;
+    --accent: #2E7FE8; --accent-soft: #DCEDFF; --ok: #1FA35C; --warn: #B87400;
+    --radius: 14px; --radius-s: 8px;
+    --shadow: 0 1px 2px rgba(26,36,48,.04), 0 8px 24px rgba(26,36,48,.06);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink);
+         font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+         line-height: 1.65; padding: 48px 20px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { margin-bottom: 36px; }
+  .eyebrow { font-size: 12px; letter-spacing: .18em; color: var(--accent); font-weight: 600; text-transform: uppercase; }
+  h1 { font-size: 30px; font-weight: 650; margin: 6px 0 10px; letter-spacing: -0.01em; }
+  .lede { color: var(--ink-2); font-size: 15.5px; max-width: 720px; }
+  .meta { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .chip { font-size: 12.5px; color: var(--ink-2); background: var(--surface);
+          border: 1px solid var(--line-soft); border-radius: 999px; padding: 4px 12px; }
+  section { background: var(--surface); border: 1px solid var(--line-soft);
+            border-radius: var(--radius); box-shadow: var(--shadow); padding: 26px 28px; margin-bottom: 22px; }
+  h2 { font-size: 18px; font-weight: 650; margin-bottom: 14px; }
+  h2 .no { color: var(--accent); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+  .stat { background: var(--canvas); border-radius: var(--radius-s); padding: 16px 18px; }
+  .stat .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .k { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+  .stat .v.ok { color: var(--ok); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: var(--ink-3); font-weight: 600; font-size: 12px;
+       letter-spacing: .06em; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
+  td { padding: 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px;
+         background: var(--canvas); border: 1px solid var(--line-soft);
+         border-radius: 6px; padding: 1px 6px; }
+  pre { background: #10161F; color: #DCE7F5; border-radius: var(--radius-s);
+        padding: 16px 18px; font-size: 12.5px; overflow-x: auto; line-height: 1.7; }
+  pre code { background: none; border: none; color: inherit; padding: 0; }
+  .commit { color: var(--accent); font-weight: 600; }
+  .steps { display: grid; gap: 12px; }
+  .step { display: flex; gap: 14px; align-items: flex-start; }
+  .marker { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 10px;
+            background: var(--accent-soft); color: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 13px; margin-top: 2px; }
+  .step b { font-size: 14px; }
+  .step p { font-size: 13px; color: var(--ink-2); }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .tag { font-size: 11.5px; background: var(--accent-soft); color: var(--accent);
+         border-radius: 999px; padding: 2px 10px; font-weight: 600; }
+  .tag.dark { background: #E9EEF5; color: var(--ink-2); }
+  ul { padding-left: 20px; font-size: 13.5px; color: var(--ink-2); }
+  li { margin: 6px 0; }
+  .rule { height: 1px; background: var(--line-soft); margin: 18px 0; }
+  footer { text-align: center; color: var(--ink-3); font-size: 12px; margin-top: 30px; }
+</style>
+</head>
+<body><div class="wrap">
+
+<header>
+  <div class="eyebrow">Aura-Launcher · Native Launcher 1.0</div>
+  <h1>参考 rubick 的 UI 完善交付总览</h1>
+  <p class="lede">以 rubick（D:\GitProjects\rubick-master，Vue+Electron 启动器）为布局与交互参照，对 Rust + Slint 原生启动器完成四批视觉与交互完善，全程令牌化改造、分批提交、可逐批回滚，构建 / 回归 / 异常路径验证齐备。</p>
+  <div class="meta">
+    <span class="chip">基线 4025841</span>
+    <span class="chip">交付 0bea996（HEAD）</span>
+    <span class="chip">设计风格 · Takram 柔和科技精致</span>
+    <span class="chip">2026-09-12</span>
+  </div>
+</header>
+
+<section>
+  <h2><span class="no">01</span>交付概览</h2>
+  <div class="grid">
+    <div class="stat"><div class="v ok">5</div><div class="k">分批提交（4 批代码 + 1 批文档）</div></div>
+    <div class="stat"><div class="v ok">19 / 19</div><div class="k">launcher-ui 测试全绿</div></div>
+    <div class="stat"><div class="v ok">5 / 5</div><div class="k">键盘管线回归（真实 Slint 按键）</div></div>
+    <div class="stat"><div class="v">30</div><div class="k">明暗主题 × 15 场景回归截图</div></div>
+    <div class="stat"><div class="v">8.8 MB</div><div class="k">生产构建 zip（另附 msix 8.3 MB）</div></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">02</span>四批改动（每批独立可回滚）</h2>
+  <div class="steps">
+    <div class="step"><span class="marker">0</span><div>
+      <b>VR 截图设施修复 <span class="commit">41a1714</span></b>
+      <p>结果渲染要求非空查询而场景从不设置 → Main.Results 与 Main.Empty 字节相同，回归设施失效。新增 AppWindow.set-query 并在结果类场景预填查询，回归验证重新可信。</p>
+      <div class="tags"><span class="tag dark">验证设施</span><span class="tag dark">app.slint + visual_scenarios.rs</span></div>
+    </div></div>
+    <div class="step"><span class="marker">A</span><div>
+      <b>Takram 柔和刷新 + rubick 行度量 <span class="commit">37e4bf3</span></b>
+      <p>圆角 4/6/8 → 6/10/14；暗色表面整体柔化一档、边框降对比；亮色同步。搜索行 36→52px、结果行 44→56px（对齐 rubick 的 60px 搜索区与 70px 大行观感）。全部走 theme.slint 令牌，窗口高度内容驱动自动适配。</p>
+      <div class="tags"><span class="tag">theme.slint</span><span class="tag dark">仅令牌 · 无组件字面量</span></div>
+    </div></div>
+    <div class="step"><span class="marker">B</span><div>
+      <b>搜索面板重写 <span class="commit">6ff8277</span></b>
+      <p>SearchBox 自绘无框输入 + 聚焦描边 + accent 起笔条（rubick logo 槽的克制演绎）；结果行改 rubick 两行 meta 结构（28px 图标 + 标题/副标题纵排）；选中态从通栏改内缩圆角胶囊；行底发丝分隔线；空态双行文案。</p>
+      <div class="tags"><span class="tag">search-box / result-row</span><span class="tag dark">公共 API 不变</span></div>
+    </div></div>
+    <div class="step"><span class="marker">C</span><div>
+      <b>管理窗口打磨 <span class="commit">8176546</span></b>
+      <p>左菜单内缩圆角胶囊 + hover 态 + 当前项 accent 指示条；卡片行加高加留白；按钮 30px；About 页分隔线。对齐 ant-design 式设置页观感。</p>
+      <div class="tags"><span class="tag">management.slint</span><span class="tag dark">零回调改动</span></div>
+    </div></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="no">03</span>验收对照（Goal Brief 逐条）</h2>
+  <table>
+    <tr><th>验收标准</th><th>结论</th><th>证据</th></tr>
+    <tr><td>技术栈与界面现状梳理</td><td>✅</td><td>01 号文档 + 基线截图留存（baseline-before-dark/light 各 15 张）</td></tr>
+    <tr><td>参考 rubick 完成 UI 完善</td><td>✅</td><td>02 号文档四批设计对照 + before/after 截图同名对齐</td></tr>
+    <tr><td>核心功能回归可用</td><td>✅</td><td>release 键盘管线 pass=true（查询 12 条结果→导航→执行→Esc）</td></tr>
+    <tr><td>界面回归无错位丢样式</td><td>✅</td><td>明暗 30 张逐项目检：无错位/重叠/截断/样式丢失</td></tr>
+    <tr><td>构建验证通过</td><td>✅</td><td>release 4m08s + zip/msix 打包 + 产物 4 次真实启动复核</td></tr>
+    <tr><td>异常路径不白屏</td><td>✅</td><td>损坏配置降级启动（walkthrough pass）、Rust 静态链接无动态依赖</td></tr>
+    <tr><td>回滚方案与风险清单</td><td>✅</td><td>04 号文档 §4：逐批 revert 均可，基线 4025841 锚定</td></tr>
+    <tr><td>交接文档完备</td><td>✅</td><td>docs/ui-refresh-2026-09/ 四份 + 本总览</td></tr>
+    <tr><td>配置持久化</td><td>✅</td><td>theme_mode light/dark 配置读取对照截图（亮度显著差异）</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2><span class="no">04</span>命令速查</h2>
+<pre><code>cd E:\Aura-Launcher\demo2\native-launcher
+cargo build -p launcher-ui -p launcher-app      # 开发构建
+cargo run -p launcher-app                        # 运行（Ctrl+Space 呼出）
+cargo test -p launcher-ui                        # 19 项测试
+cargo build --release -p launcher-app            # 生产构建
+python scripts/package.py --skip-build           # 打包 zip + msix
+
+# 验证设施（环境变量方式）
+LAUNCHER_SNAPSHOT_DIR=&lt;dir&gt; launcher-app.exe                 # 15 场景×明暗截图
+LAUNCHER_KEYBOARD_WALKTHROUGH=&lt;report.json&gt; launcher-app.exe # 键盘管线自检</code></pre>
+</section>
+
+<section>
+  <h2><span class="no">05</span>回滚与风险</h2>
+  <ul>
+    <li><b>逐批回滚</b>：<code>git revert &lt;commit&gt;</code> —— 四批相互独立（设施 / 令牌 / 组件 / 管理窗口）</li>
+    <li><b>整体回滚</b>：<code>git revert 41a1714..HEAD</code> 或 <code>git checkout 4025841 -- …</code> 后重构建</li>
+    <li><b>视觉微调</b>：全部视觉值在 theme.slint 令牌层，改令牌即全局生效</li>
+  </ul>
+  <div class="rule"></div>
+  <ul>
+    <li>VR 基线旧字面量注释已过时 —— 如需 byte-diff，用 release-dark 30 张重建基线</li>
+    <li>存量 lint（agent_service.rs fmt、launcher-workflow 2 条 clippy）为改造前遗留，建议单独清理</li>
+    <li>快照模式图标槽空白属确定性设计；真实运行异步填充</li>
+    <li>crates.io 直连易超时 —— 已配置 rsproxy sparse 镜像（见 04 号文档）</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="no">06</span>后续建议（供排期决策）</h2>
+  <table>
+    <tr><th>优先级</th><th>事项</th><th>预估</th></tr>
+    <tr><td>P1</td><td>以 release-dark 30 张为新基线接入 CI byte-diff 视觉回归</td><td>0.5 天</td></tr>
+    <tr><td>P1</td><td>管理窗口 GUI 设置闭环自动化（点击 Apply → 验证 config.toml 落盘）</td><td>1 天</td></tr>
+    <tr><td>P2</td><td>rubick 空查询历史网格的 native 等价物（需扩展 UI-CONTRACT，单独立项）</td><td>1 天</td></tr>
+    <tr><td>P2</td><td>清理存量 lint 并开启 -D warnings CI 门</td><td>0.5 天</td></tr>
+    <tr><td>P3</td><td>亮色主题边框层次观感确认与微调</td><td>0.5 天</td></tr>
+  </table>
+</section>
+
+<footer>Aura-Launcher UI Refresh 2026-09 · generated 2026-09-12 · 基线 4025841 → 0bea996</footer>
+</div></body></html>
