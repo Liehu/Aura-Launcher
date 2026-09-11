@@ -45,15 +45,17 @@ pub fn scenario_data(name: &str) -> DemoState {
         // VR-001 Main.Empty
         "VR-001" => DemoState { results: vec![], actions: vec![], status: String::new(), ..Default::default() },
         // VR-002 Main.Results
-        "VR-002" => DemoState { results: base_results, ..Default::default() },
+        "VR-002" => DemoState { results: base_results, query: "demo".into(), ..Default::default() },
         // VR-003 Main.Selected (second row carries the marker)
         "VR-003" => DemoState {
             results: base_results,
             selected: 1,
+            query: "demo".into(),
             ..Default::default()
         },
         // VR-004 Main.Error — distinct from Empty (UI-CONTRACT §3.1)
         "VR-004" => DemoState {
+            query: "demo".into(),
             status: "⚠ Search failed: plugin:calc — Timeout".into(),
             ..Default::default()
         },
@@ -66,6 +68,7 @@ pub fn scenario_data(name: &str) -> DemoState {
                 action("open", "Open History", true),
             ],
             panel_visible: true,
+            query: "demo".into(),
             ..Default::default()
         },
         // VR-006 Action.Disabled
@@ -76,6 +79,7 @@ pub fn scenario_data(name: &str) -> DemoState {
                 action("exec", "Execute command", false),
             ],
             panel_visible: true,
+            query: "demo".into(),
             ..Default::default()
         },
         // VR-007 Action.Confirmation
@@ -83,6 +87,7 @@ pub fn scenario_data(name: &str) -> DemoState {
             results: base_results,
             actions: vec![action("exec", "Execute command", true)],
             panel_visible: true,
+            query: "demo".into(),
             confirmation_pending: true,
             ..Default::default()
         },
@@ -143,12 +148,14 @@ pub fn scenario_data(name: &str) -> DemoState {
         // error presentation (§26/§45).
         "VR-014" => DemoState {
             results: base_results,
+            query: "demo".into(),
             status: "● MCP Calculator — Reconnecting…".into(),
             ..Default::default()
         },
         // VR-015 Main.ProviderUnavailable — distinct empty state (§6),
         // never rendered as "No Results".
         "VR-015" => DemoState {
+            query: "demo".into(),
             status: "⚠ Provider temporarily unavailable".into(),
             ..Default::default()
         },
@@ -261,6 +268,9 @@ pub struct DemoState {
     pub confirmation_pending: bool,
     pub status: String,
     pub selected: usize,
+    /// Pre-filled search-box text (AppWindow.set-query): results only
+    /// render when the query is non-empty (progressive disclosure).
+    pub query: String,
 }
 
 /// Apply a scenario's state to the AppWindow.
@@ -324,6 +334,7 @@ pub fn apply(ui: &launcher_ui::AppWindow, st: &DemoState) {
     ui.set_wf_status(wf_status_of(st).into());
     ui.set_wf_visible(st.wf_visible);
     ui.set_wf_diagnostics(st.wf_diagnostics);
+    ui.invoke_set_query(st.query.clone().into());
     ui.set_status(st.status.clone().into());
     ui.set_context_hint("📁 demo-context".into());
 }

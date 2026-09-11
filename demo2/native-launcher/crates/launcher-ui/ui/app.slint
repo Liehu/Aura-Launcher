@@ -517,6 +517,13 @@ export component AppWindow inherits Window {
         search.set-text("");
     }
 
+    // VR capture support (P3-UX round): the progressive-disclosure rule
+    // (show-results = has-query) hides results until the search box has
+    // text. The VR capture pre-fills the query so scenario rows render.
+    public function set-query(t: string) {
+        search.set-text(t);
+    }
+
     // Called by Rust after every popup show so keyboard focus lands in the
     // search input (win32 SetFocus alone does not restore Slint item focus).
     public function focus-input() {
