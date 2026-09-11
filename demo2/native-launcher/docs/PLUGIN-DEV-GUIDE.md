@@ -144,7 +144,7 @@ Discovered(<plugins>/*/plugin.json)
 - 动作描述对象的 `requires` 声明所需 capability；超出
   `manifest.capabilities` 的请求被拒（CapabilityDenied，见 §6）。
 
-### 5.1.1 富结果（P3.2，已实现）
+### 5.1.1 富结果（P3.2，已实现；RICH-RESULT-v1 FROZEN）
 
 给条目加可选 `rich` 字段即可——列表行不变，选中后的详情面板渲染富内容：
 
