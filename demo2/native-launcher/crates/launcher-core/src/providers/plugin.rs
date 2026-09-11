@@ -130,6 +130,27 @@ impl PluginProvider {
         if self.quarantined {
             self.handle = None;
         }
+        // P3-UI.0: persist declared tool metadata to registry tables
+        for tool in &self.manifest.tools {
+            if let Err(e) = registry.upsert_tool(
+                &self.manifest.id,
+                tool.id.as_str(),
+                self.manifest.version.as_deref().unwrap_or("0.0.0"),
+                &tool.name,
+                tool.description.as_deref(),
+                tool.category.as_deref(),
+                tool.icon.as_deref(),
+                &tool.entry_type,
+                tool.schema_version,
+            ) {
+                tracing::warn!(
+                    plugin = %self.manifest.id,
+                    tool = %tool.id.as_str(),
+                    error = %e,
+                    "tool metadata upsert failed"
+                );
+            }
+        }
         self.registry = Some(registry);
     }
 
