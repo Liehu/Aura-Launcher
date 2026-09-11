@@ -1,6 +1,11 @@
 // ResultRow (UI-CONTRACT §11 / review 38): presentation only. It receives a
 // ResultItem + `selected` flag and renders them; it never decides which
 // command is executable and never derives primary (that is Action-layer).
+//
+// P3-UX round 2 (rubick-referenced): two-line row anatomy — 28px icon slot,
+// title stacked over subtitle (rubick's a-list-item-meta pattern), an inset
+// rounded selection pill instead of an edge-to-edge highlight, and a hairline
+// row divider.
 import { Theme } from "theme.slint";
 import { SelectedMarker } from "primitives/selected-marker.slint";
 
@@ -11,7 +16,7 @@ export struct ResultItem {
     icon: string,
     score: string,
     // P2.1-E5: async-loaded icon (empty image = placeholder, no reflow —
-    // the 20px slot is always reserved)
+    // the slot is always reserved)
     icon-data: image,
     // P3-UX: title pre-split into 3 segments for match highlighting
     // (Rust-side splits; Slint renders with accent color on match)
@@ -26,81 +31,94 @@ export component ResultRow inherits Rectangle {
     callback execute();
 
     height: Theme.row-main;
-    background: selected ? Theme.bg-selected : transparent;
-    // P3.0-F13: selection transition (≤80ms; snapshot mode pins 0ms)
-    animate background { duration: Theme.anim-ms * 2ms / 3; }
+    background: transparent;
 
-    HorizontalLayout {
-        padding-left: Theme.space-3;
-        padding-right: Theme.space-3;
-        spacing: Theme.space-2;
-        alignment: start;
+    // inset rounded selection pill (was: edge-to-edge highlight)
+    Rectangle {
+        x: Theme.space-1;
+        y: 3px;
+        width: parent.width - Theme.space-1 * 2;
+        height: parent.height - 6px;
+        background: root.selected ? Theme.bg-selected : transparent;
+        border-radius: Theme.radius-medium;
+        animate background { duration: Theme.anim-ms * 2ms / 3; }
 
-        SelectedMarker { show: root.selected; }
+        HorizontalLayout {
+            padding-left: Theme.space-2;
+            padding-right: Theme.space-2;
+            spacing: Theme.space-2;
+            alignment: start;
 
-        // P2.1-E5: reserved icon slot — always 20px so text never reflows
-        Rectangle {
-            width: 20px;
-            Image {
-                source: item.icon-data;
-                width: parent.height;
-                height: parent.height;
-                image-fit: contain;
+            SelectedMarker { show: root.selected; }
+
+            // P2.1-E5: reserved icon slot — now 28px so text never reflows
+            Rectangle {
+                width: 28px;
+                Image {
+                    source: item.icon-data;
+                    width: parent.height;
+                    height: parent.height;
+                    image-fit: contain;
+                }
             }
-        }
 
-        VerticalLayout {
-            alignment: center;
-            // P3-UX match highlight: render 3 segments, match in accent
-            if item.title-match != "": HorizontalLayout {
-                spacing: 0px;
-                alignment: start;
-                Text {
-                    text: item.title-before;
+            // rubick-style two-line stack: title over subtitle
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                // P3-UX match highlight: render 3 segments, match in accent
+                if item.title-match != "": HorizontalLayout {
+                    spacing: 0px;
+                    alignment: start;
+                    Text {
+                        text: item.title-before;
+                        color: Theme.text-primary;
+                        font-size: Theme.type-title;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: item.title-match;
+                        color: Theme.accent-primary;
+                        font-weight: 700;
+                        font-size: Theme.type-title;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: item.title-after;
+                        color: Theme.text-primary;
+                        font-size: Theme.type-title;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                }
+                // no match: plain title
+                if item.title-match == "": Text {
+                    text: item.title;
                     color: Theme.text-primary;
                     font-size: Theme.type-title;
                     vertical-alignment: center;
                     overflow: elide;
                 }
                 Text {
-                    text: item.title-match;
-                    color: Theme.accent-primary;
-                    font-weight: 700;
-                    font-size: Theme.type-title;
-                    vertical-alignment: center;
-                }
-                Text {
-                    text: item.title-after;
-                    color: Theme.text-primary;
-                    font-size: Theme.type-title;
+                    text: item.subtitle;
+                    color: Theme.text-secondary;
+                    font-size: Theme.type-secondary;
                     vertical-alignment: center;
                     overflow: elide;
-                    horizontal-stretch: 1;
                 }
             }
-            // no match: plain title
-            if item.title-match == "": Text {
-                text: item.title;
-                color: Theme.text-primary;
-                font-size: Theme.type-title;
-                vertical-alignment: center;
-                overflow: elide;
-            }
         }
+    }
 
-        Rectangle { horizontal-stretch: 1; }
-
-        VerticalLayout {
-            alignment: center;
-            Text {
-                text: item.subtitle;
-                color: Theme.text-secondary;
-                font-size: Theme.type-secondary;
-                vertical-alignment: center;
-                overflow: elide;
-                width: 320px;
-            }
-        }
+    // hairline row divider (kept subtle so the selected pill dominates)
+    Rectangle {
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: Theme.border-subtle;
+        opacity: 0.6;
     }
 
     TouchArea {

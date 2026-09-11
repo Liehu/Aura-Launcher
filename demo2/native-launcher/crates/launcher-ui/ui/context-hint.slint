@@ -16,14 +16,14 @@ export component ContextHint inherits Rectangle {
 
     Divider { width: parent.width; }
     HorizontalLayout {
-        padding-left: Theme.space-3;
-        padding-right: Theme.space-3;
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
         alignment: start;
         VerticalLayout { alignment: center;
             Text {
                 text: hint;
-                color: Theme.text-tertiary;
-                font-size: Theme.type-diagnostic;
+                color: Theme.text-secondary;
+                font-size: Theme.type-secondary;
             }
         }
         Rectangle { horizontal-stretch: 1; }
@@ -31,7 +31,7 @@ export component ContextHint inherits Rectangle {
             Text {
                 text: show-affordance ? affordance : "";
                 color: Theme.text-tertiary;
-                font-size: Theme.type-diagnostic;
+                font-size: Theme.type-secondary;
                 horizontal-alignment: right;
             }
         }

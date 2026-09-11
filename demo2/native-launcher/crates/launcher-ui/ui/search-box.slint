@@ -1,9 +1,14 @@
-import { LineEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { FocusRing } from "primitives/focus-ring.slint";
 
 // SearchBox (UI-CONTRACT section 9.1): text entry, placeholder, focus, and
 // search affordance only. It never submits or interprets the query.
-import { Theme } from "theme.slint";
-
+//
+// P3-UX round 2 (rubick-referenced): frameless self-drawn entry — a 52px
+// input row with an accent lead-in bar (the rubick logo slot, restrained)
+// and a keyboard-focus ring. Public API (text / query-changed / accepted /
+// key-pressed / focus-input / set-text) is unchanged from the LineEdit
+// version, so AppWindow code is untouched.
 export component SearchBox inherits Rectangle {
     in property <string> placeholder: "Search...";
     /// current query text (Progressive Disclosure: the window keys off
@@ -11,26 +16,54 @@ export component SearchBox inherits Rectangle {
     out property <string> text <=> input.text;
     callback query-changed(string);
     callback accepted(string);
-    /// Intercepted BEFORE the LineEdit's internal cursor handling, so the
+    /// Intercepted BEFORE the input's internal cursor handling, so the
     /// window can drive list/panel navigation with Up/Down while the input
     /// keeps Left/Right and text editing.
     callback key-pressed(KeyEvent) -> EventResult;
 
     background: Theme.bg-input;
     border-radius: Theme.radius-medium;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.border-focus : Theme.border-subtle;
+    animate border-color { duration: Theme.anim-ms * 2ms / 3; }
     height: Theme.row-search;
 
     forward-focus: input;
-    input := LineEdit {
-        // plain-container children default to preferred size + centered:
-        // pin the LineEdit to the SearchBox or it renders as a small box
-        width: parent.width;
-        y: (parent.height - self.height) / 2;
+
+    // accent lead-in bar (rubick logo position, restrained)
+    Rectangle {
+        x: Theme.space-3;
+        y: (parent.height - 18px) / 2;
+        width: 3px;
+        height: 18px;
+        border-radius: Theme.radius-small;
+        background: Theme.accent-primary;
+        opacity: input.has-focus ? 1.0 : 0.55;
+        animate opacity { duration: Theme.anim-ms * 2ms / 3; }
+    }
+
+    // placeholder lives behind the input so it never intercepts focus
+    if input.text == "": Text {
+        x: Theme.space-3 + 15px;
+        width: parent.width - Theme.space-3 - 15px - Theme.space-3;
+        height: parent.height;
+        text: root.placeholder;
+        color: Theme.text-tertiary;
         font-size: Theme.type-input;
-        placeholder-text: root.placeholder;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    input := TextInput {
+        x: Theme.space-3 + 15px;
+        width: parent.width - Theme.space-3 - 15px - Theme.space-3;
+        y: (parent.height - self.preferred-height) / 2;
+        font-size: Theme.type-input;
+        color: Theme.text-primary;
+        single-line: true;
         key-pressed(event) => { root.key-pressed(event) }
-        edited(text) => { root.query-changed(text); }
-        accepted(text) => { root.accepted(text); }
+        edited() => { root.query-changed(self.text); }
+        accepted() => { root.accepted(self.text); }
     }
 
     public function focus-input() {
