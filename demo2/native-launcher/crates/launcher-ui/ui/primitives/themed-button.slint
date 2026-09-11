@@ -8,8 +8,8 @@ export component ThemedButton inherits Rectangle {
     in property <bool> enabled: true;
     callback clicked;
 
-    height: 26px;
-    border-radius: Theme.radius-md;
+    height: 30px;
+    border-radius: Theme.radius-sm;
     background: ta.pressed ? Theme.bg-selected
         : ta.has-hover ? Theme.bg-surface-elevated
         : Theme.bg-surface;
