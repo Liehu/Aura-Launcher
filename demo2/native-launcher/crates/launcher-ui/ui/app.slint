@@ -64,6 +64,12 @@ export component TrayIcon inherits SystemTrayIcon {
 }
 
 export component AppWindow inherits Window {
+    // P3-UX: popup fade-in (0→1 over anim-ms). Host sets appeared=true
+    // after show(). Snapshot mode pins anim-ms=0 (instant). Window doesn't
+    // natively support opacity animation so we wrap via a transparent
+    // overlay that fades the background+content.
+    in-out property <bool> appeared: true;
+
     // VISUAL-DESIGN-SPEC v0.2: width fixed at the default (min 480 / max 960
     // reserved for future resize); height is CONTENT-DRIVEN, never fixed:
     //   height = padding-window + search(36) + gap + rows*44 + gap
