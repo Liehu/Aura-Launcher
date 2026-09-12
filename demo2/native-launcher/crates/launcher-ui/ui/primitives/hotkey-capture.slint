@@ -1,0 +1,69 @@
+// HotkeyCapture (settings parity G5): a rubick-style shortcut capture box —
+// displays the current combo in an accent-bordered field; click (or Space,
+// when focused) enters capturing mode ("Press keys... Esc to cancel"); the
+// captured chord is reported as text + modifier booleans so the host can
+// assemble, validate, persist and audit it. Esc cancels.
+import { Theme } from "../theme.slint";
+
+export component HotkeyCapture inherits Rectangle {
+    in property <string> value;
+    in property <bool> capturing: false;
+    in property <bool> enabled: true;
+    callback captured(string, bool, bool, bool, bool); // text, ctrl, alt, shift, meta
+    callback capture-started();      // host flips `capturing` on
+    callback capture-cancelled();
+
+    width: 200px;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    background: root.capturing ? Theme.bg-canvas
+        : ta.has-hover ? Theme.bg-surface-elevated : Theme.bg-surface;
+    border-width: 1px;
+    border-color: root.capturing ? Theme.accent-primary
+        : ta.has-hover ? Theme.border-focus : Theme.border-default;
+    animate border-color { duration: Theme.anim-ms * 2ms / 3; }
+    opacity: root.enabled ? 1.0 : 0.4;
+
+    Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.capturing ? "Press keys... Esc to cancel" : root.value;
+        color: root.capturing ? Theme.text-tertiary : Theme.accent-primary;
+        font-size: Theme.type-caption;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    fs := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (root.capturing) {
+                if (event.text == Key.Escape) {
+                    root.capture-cancelled();
+                    accept
+                } else {
+                    root.captured(event.text, event.modifiers.control,
+                        event.modifiers.alt, event.modifiers.shift,
+                        event.modifiers.meta);
+                    accept
+                }
+            } else if (event.text == Key.Return || event.text == " ") {
+                root.capture-started();
+                accept
+            } else { reject }
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        enabled: root.enabled;
+        clicked => {
+            fs.focus();
+            if (!root.capturing) { root.capture-started(); }
+        }
+    }
+
+    public function focus-capture() { fs.focus(); }
+}

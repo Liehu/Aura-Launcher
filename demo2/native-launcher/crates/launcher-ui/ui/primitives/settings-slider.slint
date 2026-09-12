@@ -1,0 +1,80 @@
+﻿// SettingsSlider (settings parity G6): a token-driven numeric slider for
+// bounded integers (result_limit 4..=16). Filled accent track, thumb grows
+// on hover/focus, click-to-set and drag support via the pointer events.
+// Reports integer values only; the host clamps and persists.
+import { Theme } from "../theme.slint";
+
+export component SettingsSlider inherits Rectangle {
+    in property <int> value: 8;
+    in property <int> min: 1;
+    in property <int> max: 16;
+    in property <bool> enabled: true;
+    callback changed(int);           // reports the new integer value
+
+    height: 24px;
+    opacity: root.enabled ? 1.0 : 0.4;
+
+    property <length> usable: self.width - 16px;
+    property <float> frac: (root.value - root.min) / Math.max(1.0, (root.max - root.min));
+
+    fs := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.LeftArrow || event.text == Key.DownArrow) {
+                if (root.enabled) { root.changed(Math.max(root.min, root.value - 1)); }
+                accept
+            } else if (event.text == Key.RightArrow || event.text == Key.UpArrow) {
+                if (root.enabled) { root.changed(Math.min(root.max, root.value + 1)); }
+                accept
+            } else { reject }
+        }
+    }
+
+    // track
+    Rectangle {
+        y: (parent.height - 4px) / 2;
+        width: parent.width;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.bg-surface-elevated;
+    }
+    // filled portion
+    Rectangle {
+        y: (parent.height - 4px) / 2;
+        width: 8px + root.frac * parent.usable - 8px;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.accent-primary;
+    }
+    // thumb (software renderer has no drop-shadow: white fill + subtle border)
+    Rectangle {
+        x: Math.max(0px, Math.min(parent.width - 16px, root.frac * parent.usable));
+        y: (parent.height - 16px) / 2;
+        width: ta.has-hover || fs.has-focus ? 18px : 14px;
+        height: ta.has-hover || fs.has-focus ? 18px : 14px;
+        animate width { duration: Theme.anim-ms * 1ms; }
+        animate height { duration: Theme.anim-ms * 1ms; }
+        border-radius: self.width / 2;
+        background: Theme.light-theme ? #FFFFFF : #E6ECF2;
+        border-width: 1px;
+        border-color: Theme.border-default;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        enabled: root.enabled;
+        moved => {
+            if (ta.pressed) {
+                root.changed(root.min + Math.round(
+                    Math.max(0.0, Math.min(1.0, (ta.mouse-x - 8px) / root.usable))
+                    * (root.max - root.min)));
+            }
+        }
+        clicked => {
+            root.changed(root.min + Math.round(
+                Math.max(0.0, Math.min(1.0, (ta.mouse-x - 8px) / root.usable))
+                * (root.max - root.min)));
+        }
+    }
+
+    public function focus-slider() { fs.focus(); }
+}

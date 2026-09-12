@@ -1,0 +1,57 @@
+// ToggleSwitch (settings parity G3): a rubick a-switch equivalent —
+// token-driven track/knob, checked/un-checked with animated thumb, hover,
+// disabled, and keyboard focus (Space toggles when focused). Presentation
+// only: it never interprets what the boolean means.
+import { Theme } from "../theme.slint";
+
+export component ToggleSwitch inherits Rectangle {
+    in property <bool> checked: false;
+    in property <bool> enabled: true;
+    callback toggled(bool);          // reports the NEW value
+
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: root.checked ? Theme.accent-primary
+        : ta.has-hover ? Theme.bg-surface-elevated : Theme.bg-surface;
+    border-width: 1px;
+    border-color: root.checked ? Theme.accent-primary
+        : (fs.has-focus || ta.has-hover) ? Theme.border-focus : Theme.border-default;
+    opacity: root.enabled ? 1.0 : 0.4;
+    animate background { duration: Theme.anim-ms * 2ms / 3; }
+    animate border-color { duration: Theme.anim-ms * 2ms / 3; }
+
+    // keyboard focus ring (G9): visible when the internal scope holds focus
+    fs := FocusScope {
+        width: parent.width;
+        height: parent.height;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                if (root.enabled) { root.toggled(!root.checked); }
+                accept
+            } else { reject }
+        }
+    }
+
+    // thumb: 18px circle, slides 22px
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: root.checked ? Theme.text-inverse : Theme.text-secondary;
+        animate x { duration: Theme.anim-ms * 2ms / 3; easing: ease-out; }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        enabled: root.enabled;
+        clicked => {
+            fs.focus();
+            root.toggled(!root.checked);
+        }
+    }
+
+    public function focus-switch() { fs.focus(); }
+}

@@ -1,0 +1,56 @@
+// Segmented (settings parity G4): a compact a-select equivalent for small
+// closed option sets (theme mode: system/light/dark). Renders the choices
+// inline — no popup layer — with an accent-filled selected segment and a
+// hover state. Selection is click-driven; the control is focusable so Slint's
+// built-in Tab navigation reaches it. The host owns the value.
+import { Theme } from "../theme.slint";
+
+export component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in property <string> value;
+    in property <bool> enabled: true;
+    callback selected(string);       // reports the chosen option
+
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    background: Theme.bg-canvas;
+    border-width: 1px;
+    border-color: fs.has-focus ? Theme.border-focus : Theme.border-subtle;
+    animate border-color { duration: Theme.anim-ms * 2ms / 3; }
+    opacity: root.enabled ? 1.0 : 0.4;
+
+    fs := FocusScope { }
+
+    HorizontalLayout {
+        padding: 2px;
+        spacing: 2px;
+        for opt in root.options: Rectangle {
+            min-width: 64px;
+            horizontal-stretch: 1;
+            border-radius: Theme.radius-sm - 2px;
+            background: root.value == opt ? Theme.accent-primary
+                : ta.has-hover ? Theme.bg-surface-elevated : transparent;
+            animate background { duration: Theme.anim-ms * 2ms / 3; }
+
+            ta := TouchArea {
+                mouse-cursor: pointer;
+                enabled: root.enabled;
+                clicked => {
+                    fs.focus();
+                    if (root.value != opt) { root.selected(opt); }
+                }
+            }
+            Text {
+                text: opt;
+                color: root.value == opt ? Theme.text-inverse
+                    : ta.has-hover ? Theme.text-primary : Theme.text-secondary;
+                font-size: Theme.type-caption;
+                font-weight: root.value == opt ? 700 : 400;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                width: parent.width;
+                height: parent.height;
+            }
+        }
+    }
+}

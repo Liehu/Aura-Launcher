@@ -8,6 +8,10 @@
 // popup); reopen = show + recenter.
 import { Theme } from "theme.slint";
 import { ThemedButton } from "primitives/themed-button.slint";
+import { ToggleSwitch } from "primitives/toggle-switch.slint";
+import { Segmented } from "primitives/segmented.slint";
+import { SettingsSlider } from "primitives/settings-slider.slint";
+import { HotkeyCapture } from "primitives/hotkey-capture.slint";
 
 export struct PluginEntry {
     id: string,
@@ -29,6 +33,27 @@ export struct SettingRow {
     action-id: string,
 }
 
+/// Settings parity (2026-09 round 2): one typed option the General page
+/// renders as a real control. `kind` selects the control: "group" renders
+/// an accent section header; "toggle" / "segmented" / "slider" / "hotkey"
+/// / "info" render their control on the row's trailing side. The host owns
+/// every value — the UI only reports user intent upward.
+export struct SettingItem {
+    key: string,
+    label: string,
+    desc: string,
+    kind: string,
+    value-str: string,
+    value-bool: bool,
+    value-num: int,
+    min: int,
+    max: int,
+    options: [string],
+    enabled: bool,
+    capturing: bool,
+    focus-ix: int,      // keyboard traversal order (-1 = not focusable)
+}
+
 export struct WindowEntry {
     hwnd: string,
     title: string,
@@ -46,11 +71,19 @@ export struct TargetEntry {
 export component ManagementWindow inherits Window {
     title: "Launcher Management";
     width: 780px;
-    height: 520px;
+    // Frameless (same as the popup): the OS title bar made Window.height an
+    // OUTER measure, so ~31px of layout space fell outside the client area
+    // and the save-status strip was invisible. Frameless => client == layout.
+    no-frame: true;
+    height: 640px;
     background: Theme.bg-canvas;
 
     in-out property <int> tab: 0;   // 0 general / 1 plugins / 2 workflows / 3 windows / 4 about
     in property <[SettingRow]> general-rows;
+    // settings-parity option model + save feedback
+    in property <[SettingItem]> setting-items;
+    in property <string> save-status;
+    in property <bool> save-ok: true;
     in property <[PluginEntry]> plugins;
     in property <[WorkflowEntry]> workflows;
     in property <[WindowEntry]> windows;
@@ -61,6 +94,13 @@ export component ManagementWindow inherits Window {
 
     callback tab-selected(int);
     callback setting-applied(string /* action-id */);
+    callback setting-toggled(string /* key */, bool /* new value */);
+    callback setting-selected(string /* key */, string /* option */);
+    callback setting-number(string /* key */, int /* value */);
+    callback setting-capture-started(string /* key */);
+    callback setting-capture-cancelled(string /* key */);
+    callback setting-captured(string /* key */, string /* text */, bool, bool, bool, bool /* ctrl/alt/shift/meta */);
+    callback setting-reset-default(string /* key */);
     callback plugin-toggled(string /* id */, bool /* enable */);
     callback workflow-deleted(string /* path */);
     callback pin-toggled(string /* hwnd */, bool /* pin */);
@@ -69,6 +109,8 @@ export component ManagementWindow inherits Window {
     callback follow-clear(string /* pin hwnd */);
     callback closed();
 
+    // keyboard traversal: Tab uses Slint's built-in focus chain; each
+    // control handles Space/Enter/arrows internally (parity G9)
     // ---- left menu (1/7) ----
     Rectangle {
         x: 0;
@@ -140,37 +182,149 @@ export component ManagementWindow inherits Window {
         height: parent.height;
         background: Theme.bg-canvas;
 
-        // ---- General ----
-        if root.tab == 0: VerticalLayout {
-            padding: Theme.spacing-lg;
-            spacing: Theme.spacing-xs;
-            for row in root.general-rows: Rectangle {
-                height: 48px;
+        // ---- General (settings parity: groups + real controls + save feedback) ----
+        if root.tab == 0: Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: transparent;
+            VerticalLayout {
+                width: parent.width;
+                height: parent.height - 30px;
+                spacing: 0;
+                // option list (parity G12: fixed 9 items, no scrolling needed)
+                gl := VerticalLayout {
+                    width: parent.width;
+                    padding: Theme.spacing-lg;
+                    spacing: Theme.space-1;
+                    for it in root.setting-items: Rectangle {
+                        if it.kind == "group": Rectangle {
+                            height: 36px;
+                            background: transparent;
+                            HorizontalLayout {
+                                padding-left: Theme.spacing-sm;
+                                Text {
+                                    text: it.label;
+                                    color: Theme.accent-primary;
+                                    font-size: Theme.type-body;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                        if it.kind != "group": Rectangle {
+                            height: it.kind == "info" ? 44px : 60px;
+                            background: Theme.bg-surface;
+                            border-radius: Theme.radius-md;
+                            HorizontalLayout {
+                                padding-left: Theme.spacing-lg;
+                                padding-right: Theme.spacing-lg;
+                                spacing: Theme.space-3;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text {
+                                        text: it.label;
+                                        color: Theme.text-primary;
+                                        font-size: Theme.type-body;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: it.desc;
+                                        color: Theme.text-tertiary;
+                                        font-size: Theme.type-caption;
+                                        overflow: elide;
+                                    }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    if it.kind == "toggle": ToggleSwitch {
+                                        checked: it.value-bool;
+                                        enabled: it.enabled;
+                                        toggled(b) => { root.setting-toggled(it.key, b); }
+                                    }
+                                    if it.kind == "segmented": Segmented {
+                                        options: it.options;
+                                        value: it.value-str;
+                                        enabled: it.enabled;
+                                        selected(s) => { root.setting-selected(it.key, s); }
+                                    }
+                                    if it.kind == "slider": HorizontalLayout {
+                                        spacing: Theme.space-2;
+                                        SettingsSlider {
+                                            width: 200px;
+                                            value: it.value-num;
+                                            min: it.min;
+                                            max: it.max;
+                                            enabled: it.enabled;
+                                            changed(v) => { root.setting-number(it.key, v); }
+                                        }
+                                        Text {
+                                            text: it.value-num;
+                                            color: Theme.text-secondary;
+                                            font-size: Theme.type-caption;
+                                            vertical-alignment: center;
+                                            width: 24px;
+                                        }
+                                    }
+                                    if it.kind == "hotkey": HorizontalLayout {
+                                        spacing: Theme.space-2;
+                                        HotkeyCapture {
+                                            value: it.value-str;
+                                            capturing: it.capturing;
+                                            enabled: it.enabled;
+                                            capture-started() => { root.setting-capture-started(it.key); }
+                                            capture-cancelled() => { root.setting-capture-cancelled(it.key); }
+                                            captured(t, c, a, s, m) => { root.setting-captured(it.key, t, c, a, s, m); }
+                                        }
+                                        ThemedButton {
+                                            text: "重置";
+                                            width: 64px;
+                                            enabled: it.enabled;
+                                            clicked => { root.setting-reset-default(it.key); }
+                                        }
+                                    }
+                                    if it.kind == "info": Text {
+                                        text: it.value-str;
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.type-secondary;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // save feedback strip (parity G7): pinned to the bottom edge
+            status := Rectangle {
+                x: 0;
+                y: parent.height - 30px;
+                width: parent.width;
+                height: 30px;
                 background: Theme.bg-surface;
-                border-radius: Theme.radius-md;
                 HorizontalLayout {
                     padding-left: Theme.spacing-lg;
                     padding-right: Theme.spacing-lg;
-                    alignment: start;
                     spacing: Theme.space-2;
                     VerticalLayout {
                         alignment: center;
-                        Text { text: row.label; color: Theme.text-primary; font-size: Theme.type-body; }
+                        Rectangle {
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 4px;
+                            background: root.save-ok ? Theme.semantic-success : Theme.semantic-error;
+                        }
                     }
-                    Rectangle { horizontal-stretch: 1; }
-                    VerticalLayout {
-                        alignment: center;
-                        Text { text: row.value; color: Theme.text-secondary; font-size: Theme.type-secondary; }
-                    }
-                    ThemedButton {
-                        text: "Apply";
-                        width: 80px;
-                        clicked => { root.setting-applied(row.action-id); }
+                    Text {
+                        text: root.save-status;
+                        color: root.save-ok ? Theme.text-secondary : Theme.semantic-error;
+                        font-size: Theme.type-caption;
+                        vertical-alignment: center;
                     }
                 }
             }
         }
-
         // ---- Plugins ----
         if root.tab == 1: VerticalLayout {
             padding: Theme.spacing-lg;

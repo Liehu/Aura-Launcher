@@ -402,7 +402,7 @@ fn apply_ui_scale(_ui: &AppWindow) {}
 /// Effective light decision: `light` → true; `system` → follow the OS
 /// app-light preference (registry read, not an Effect); `dark`/unknown →
 /// false. `LAUNCHER_THEME_MODE` env overrides everything (VR capture).
-fn effective_light(mode: &str) -> bool {
+pub(crate) fn effective_light(mode: &str) -> bool {
     let mode = std::env::var("LAUNCHER_THEME_MODE")
         .ok()
         .filter(|v| !v.is_empty())

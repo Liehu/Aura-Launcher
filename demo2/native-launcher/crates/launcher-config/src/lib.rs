@@ -197,6 +197,43 @@ fn normalize_mcp_tables(raw: &str) -> String {
     toml::to_string(&v).unwrap_or_else(|_| raw.to_string())
 }
 
+/// Settings change ledger (settings parity G8): append-only JSONL at
+/// `%APPDATA%\NativeLauncher\settings-audit.jsonl`. One line per change:
+/// {"ts":<unix secs>,"key":..,"old":..,"new":..,"source":..}. Best-effort:
+/// audit failures are logged and never fail the setting change itself.
+pub fn audit_setting_change(key: &str, old: &str, new: &str, source: &str) {
+    use std::io::Write as _;
+    let path = match appdata() {
+        Ok(p) => p.join("NativeLauncher").join("settings-audit.jsonl"),
+        Err(e) => {
+            warn!(error = %e, key, "settings.audit_path_unavailable");
+            return;
+        }
+    };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let line = serde_json::json!({
+        "ts": ts,
+        "key": key,
+        "old": old,
+        "new": new,
+        "source": source,
+    });
+    match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(mut f) => {
+            if let Err(e) = writeln!(f, "{line}") {
+                warn!(error = %e, key, "settings.audit_write_failed");
+            }
+        }
+        Err(e) => warn!(error = %e, key, "settings.audit_open_failed"),
+    }
+}
+
 /// Load config: missing -> write defaults; partial -> fill defaults;
 /// unparsable -> defaults + WARN. Always yields a usable config.
 pub fn load_or_create(path: &Path) -> Result<AppConfig, ConfigError> {
