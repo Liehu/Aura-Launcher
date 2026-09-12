@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>管理面板选项 UI × rubick 对齐 · 交付总览</title>
+<style>
+  :root { --canvas:#F7F9FC; --surface:#FFFFFF; --ink:#1A2430; --ink2:#55606E; --ink3:#7A8595;
+          --line:#E8ECF2; --accent:#2E7FE8; --accent-soft:#DCEDFF; --ok:#1FA35C; --err:#D63A3A;
+          --r:14px; --rs:8px; --shadow:0 1px 2px rgba(26,36,48,.04),0 8px 24px rgba(26,36,48,.06); }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--canvas); color:var(--ink); font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+         line-height:1.65; padding:44px 20px; }
+  .wrap { max-width:940px; margin:0 auto; }
+  .eyebrow { font-size:12px; letter-spacing:.18em; color:var(--accent); font-weight:600; }
+  h1 { font-size:28px; font-weight:650; margin:6px 0 10px; }
+  .lede { color:var(--ink2); font-size:15px; max-width:740px; }
+  section { background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+            box-shadow:var(--shadow); padding:24px 26px; margin-top:20px; }
+  h2 { font-size:17px; font-weight:650; margin-bottom:14px; }
+  h2 .no { color:var(--accent); margin-right:8px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+  .stat { background:var(--canvas); border-radius:var(--rs); padding:14px 16px; }
+  .stat .v { font-size:22px; font-weight:700; }
+  .stat .k { font-size:12px; color:var(--ink3); }
+  .ok { color:var(--ok); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; color:var(--ink3); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+       padding:8px 10px; border-bottom:1px solid var(--line); }
+  td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  code { font-family:Consolas,monospace; font-size:12px; background:var(--canvas);
+         border:1px solid var(--line); border-radius:6px; padding:1px 6px; }
+  .pill { display:inline-block; font-size:11.5px; font-weight:600; border-radius:999px; padding:2px 10px; }
+  .done { background:var(--accent-soft); color:var(--accent); }
+  .keep { background:#E9EEF5; color:var(--ink2); }
+  .step { display:flex; gap:12px; margin-bottom:12px; }
+  .marker { flex:0 0 auto; width:26px; height:26px; border-radius:9px; background:var(--accent-soft);
+            color:var(--accent); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
+  .step b { font-size:13.5px; } .step p { font-size:12.5px; color:var(--ink2); }
+  pre { background:#10161F; color:#DCE7F5; border-radius:var(--rs); padding:14px 16px; font-size:12px; overflow-x:auto; }
+  footer { text-align:center; color:var(--ink3); font-size:11.5px; margin-top:24px; }
+</style>
+</head>
+<body><div class="wrap">
+  <div class="eyebrow">AURA-LAUNCHER · SETTINGS PARITY ROUND</div>
+  <h1>管理面板选项 UI 对齐 rubick · 交付总览</h1>
+  <p class="lede">针对「管理面板选项 UI 与 rubick 还有很大差距」，本轮把 General 设置页从「标签+文本+Apply」重构为 rubick 式真控件面板：五组分组、自绘开关/分段选择/滑杆/快捷键捕获，修改即时原子保存并写入台账；过程中定位并修复了标题栏导致的布局空间溢出问题。</p>
+
+  <section>
+    <h2>交付概览</h2>
+    <div class="grid">
+      <div class="stat"><div class="v ok">13 / 13</div><div class="k">差距项关闭（3 项有保留理由）</div></div>
+      <div class="stat"><div class="v ok">4 / 4</div><div class="k">真实链路验证 PASS（保存+台账）</div></div>
+      <div class="stat"><div class="v ok">32</div><div class="k">测试全绿（config 13 + ui 12+1+6）</div></div>
+      <div class="stat"><div class="v ok">pass=true</div><div class="k">release 键盘管线回归</div></div>
+      <div class="stat"><div class="v">+1209</div><div class="k">单提交 c3dbfae（12 文件）</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>差距关闭</h2>
+    <table>
+      <tr><th>差距项</th><th>实现</th><th>状态</th></tr>
+      <tr><td>分组标题 + 两端对齐行</td><td>外观/行为/性能/快捷键/索引目录 五组，label 左控件右</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>真开关（a-switch）</td><td>自绘 ToggleSwitch：checked 动画、hover/禁用/焦点环、空格切换</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>下拉（a-select）</td><td>Segmented 三值分段（system/light/dark），选中 accent 反白</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>滑杆数值</td><td>SettingsSlider（result_limit 4..=16），点击/拖动/方向键</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>快捷键捕获</td><td>HotkeyCapture：点击捕获、修饰键校验、Esc 取消、重置默认</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>即时保存 + 状态反馈</td><td>原子写 config.toml + 底部状态条（绿点已保存 / 红点失败）</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>修改台账</td><td>settings-audit.jsonl（ts/key/old/new/source），只追加</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>键盘可达</td><td>控件自含焦点域 + Slint 内置 Tab 焦点链 + 焦点环</td><td><span class="pill done">已关闭</span></td></tr>
+      <tr><td>rubick 图标侧栏 / 账户·数据库页签</td><td>无对应业务模块，图标属新增资产</td><td><span class="pill keep">保留理由</span></td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>验证证据</h2>
+    <div class="step"><span class="marker">1</span><div><b>截图走查（明暗两套）</b><p>examples/management_shot 产出 management-dark/light.png：五组标题、分段选中态、开关两态、滑杆数值、热键框+重置、状态条全部可见，无错位/重叠/截断。</p></div></div>
+    <div class="step"><span class="marker">2</span><div><b>真实链路（examples/settings_apply_check）</b><p>程序化触发 autostart 切换 / result_limit=9 / hotkey=Alt+Space → config.toml 三项落盘 PASS → settings-audit.jsonl +3 条 PASS → 配置还原。</p></div></div>
+    <div class="step"><span class="marker">3</span><div><b>回归</b><p>launcher-config 13 + launcher-ui 12+1+6 全绿；release 键盘管线 pass=true；打包产物 NativeLauncher-1.0.0-win64.zip 重新生成。</p></div></div>
+    <div class="step"><span class="marker">4</span><div><b>基础设施修复</b><p>管理窗口原带系统标题栏：Window.height 为外框高，client 比布局空间少 ~31px，状态条整段落在 client 外不可见。改为 no-frame（与主弹窗一致）后布局精确。代价：窗口不可拖动（Close 按钮+托盘重开可用），记入已知限制。</p></div></div>
+  </section>
+
+  <section>
+    <h2>发布与回滚</h2>
+<pre><code>cd E:\Aura-Launcher\demo2\native-launcher
+cargo test -p launcher-ui -p launcher-config      # 门禁 32 项
+cargo build --release -p launcher-app             # 生产构建
+python scripts/package.py --skip-build            # 打包 zip+msix
+
+# 回滚：git revert &lt;本轮首提交&gt;^..HEAD 后重构建打包
+# 或直接用上一稳定版 zip 覆盖安装（install.ps1 幂等，用户数据/台账保留）</code></pre>
+    <p style="font-size:12.5px;color:var(--ink2);margin-top:10px;">上线后抽查清单（8 项）与回滚细节见 06-settings-deploy-rollback.md。台账只追加、不随回滚删除（审计连续性为有意设计）。</p>
+  </section>
+
+  <section>
+    <h2>后续建议</h2>
+    <table>
+      <tr><th>优先级</th><th>事项</th><th>预估</th></tr>
+      <tr><td>P1</td><td>管理窗口 GUI 点击闭环自动化（真实点击开关→验证落盘）</td><td>0.5 天</td></tr>
+      <tr><td>P2</td><td>自绘窗口拖动区（弥补 no-frame 失去的拖动能力）</td><td>0.5 天</td></tr>
+      <tr><td>P3</td><td>侧栏图标 + 滑杆数值 chip 对齐微调</td><td>0.5 天</td></tr>
+    </table>
+  </section>
+
+  <footer>Aura-Launcher settings parity · 2026-09-12 · commit c3dbfae</footer>
+</div></body></html>
