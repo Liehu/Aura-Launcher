@@ -13,11 +13,11 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use launcher_domain::workflow::WorkflowFailureClass as Class;
-use launcher_domain::{Command, QueryContext};
-use launcher_domain::PluginManifest;
-use launcher_plugin_host::{PluginError, PluginHandle};
 use super::plugin_diagnostics::{global_record, DiagnosticClass, DiagnosticEntry};
+use launcher_domain::workflow::WorkflowFailureClass as Class;
+use launcher_domain::PluginManifest;
+use launcher_domain::{Command, QueryContext};
+use launcher_plugin_host::{PluginError, PluginHandle};
 use tracing::warn;
 
 use crate::Provider;
@@ -75,8 +75,8 @@ fn classify(e: &PluginError) -> DiagnosticClass {
 impl PluginProvider {
     /// Validate `plugin.json` and build a provider around it.
     pub fn from_manifest_file(path: &std::path::Path) -> Result<Self, String> {
-        let raw = std::fs::read_to_string(path)
-            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        let raw =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let manifest: PluginManifest =
             serde_json::from_str(&raw).map_err(|e| format!("manifest: {e}"))?;
         manifest
@@ -121,7 +121,10 @@ impl PluginProvider {
 
     /// Attach the persistent plugin registry (P2.2-D): quarantine and
     /// failure state survive restarts.
-    pub fn set_registry(&mut self, registry: std::sync::Arc<super::plugin_registry::PluginRegistry>) {
+    pub fn set_registry(
+        &mut self,
+        registry: std::sync::Arc<super::plugin_registry::PluginRegistry>,
+    ) {
         // hydrate persisted state
         let st = registry.state(&self.manifest.id);
         self.disabled = !st.enabled;
@@ -167,8 +170,24 @@ impl PluginProvider {
     }
 
     fn ensure_running(&mut self) -> Result<(), PluginError> {
-        if self.handle.is_some() {
-            return Ok(());
+        // ADR-0019 lifecycle reclaim at the use boundary: an exited process
+        // (ephemeral invocation completed, or crash) is dropped and respawned
+        // fresh; an idle resident headless plugin is shut down before reuse.
+        // The lifetime DECISION stays inside PluginHost — this code only
+        // observes the host's process-state primitives.
+        if let Some(h) = self.handle.as_mut() {
+            h.poll_exit();
+            if h.process_running() {
+                if h.idle_expired() {
+                    tracing::info!(plugin = %self.manifest.id, "plugin.idle_reclaim");
+                    h.shutdown();
+                    self.handle = None;
+                } else {
+                    return Ok(());
+                }
+            } else {
+                self.handle = None;
+            }
         }
         if let Some(until) = self.spawn_failed_until {
             if Instant::now() < until {
@@ -213,13 +232,12 @@ impl Provider for PluginProvider {
     }
 
     fn running_plugin(&self) -> Option<(String, u32, bool)> {
-        self.handle.as_ref().map(|h| {
-            (
-                self.manifest.id.clone(),
-                h.pid(),
-                self.manifest.window_ui,
-            )
-        })
+        // ADR-0019: a process that already exited (e.g. an ephemeral plugin
+        // between invocations) must not be reported to window management.
+        self.handle
+            .as_ref()
+            .filter(|h| h.process_running())
+            .map(|h| (self.manifest.id.clone(), h.pid(), self.manifest.window_ui))
     }
 
     fn plugin_identity(&self) -> Option<&str> {
@@ -248,11 +266,18 @@ impl Provider for PluginProvider {
         let t0 = std::time::Instant::now();
         if let Err(e) = self.ensure_running() {
             warn!(plugin = %self.manifest.id, error = %e, "plugin.failed");
-            record_diag(&self.manifest.id, classify(&e), t0.elapsed().as_millis() as u64, None);
+            record_diag(
+                &self.manifest.id,
+                classify(&e),
+                t0.elapsed().as_millis() as u64,
+                None,
+            );
             self.last_query_error = Some(e.to_string());
             return Vec::new();
         }
-        let Some(h) = self.handle.as_mut() else { return Vec::new() };
+        let Some(h) = self.handle.as_mut() else {
+            return Vec::new();
+        };
         match h.query(&q.normalized) {
             Ok(cmds) => {
                 self.protocol_failures = 0;
@@ -267,7 +292,12 @@ impl Provider for PluginProvider {
             }
             Err(e) => {
                 warn!(plugin = %self.manifest.id, error = %e, "plugin query failed");
-                record_diag(&self.manifest.id, classify(&e), t0.elapsed().as_millis() as u64, None);
+                record_diag(
+                    &self.manifest.id,
+                    classify(&e),
+                    t0.elapsed().as_millis() as u64,
+                    None,
+                );
                 self.last_query_error = Some(e.to_string());
                 // a query RPC failure is a protocol-level event exactly like
                 // its execute_action counterpart (P2.3-C3): drop the process
@@ -276,8 +306,9 @@ impl Provider for PluginProvider {
                 self.handle = None;
                 self.protocol_failures += 1;
                 if let Some(reg) = self.registry.as_ref() {
-                    self.quarantined =
-                        reg.record_failure(&self.manifest.id).unwrap_or(self.quarantined);
+                    self.quarantined = reg
+                        .record_failure(&self.manifest.id)
+                        .unwrap_or(self.quarantined);
                 }
                 if self.protocol_failures >= QUARANTINE_THRESHOLD {
                     self.quarantined = true;

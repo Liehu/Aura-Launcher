@@ -439,6 +439,37 @@ pub enum Capability {
     McpInvoke,
 }
 
+/// Plugin process lifetime policy (ADR-0019 / Plugin Lifetime v0.1 §2).
+/// `Ephemeral`: one invocation = one process (spawn → invoke → shutdown →
+/// exit). `Resident`: first call spawns, later calls reuse, idle timeout
+/// reclaims (legacy behavior). `session` is recognized by the spec but
+/// rejected at validation — never silently downgraded (v0.1 §3.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PluginLifetime {
+    #[serde(rename = "ephemeral")]
+    Ephemeral,
+    #[serde(rename = "resident")]
+    Resident,
+}
+
+impl Default for PluginLifetime {
+    /// Legacy compatibility (INV-LIFE-001): an absent `lifetime` field is
+    /// Resident, exactly the pre-lifecycle behavior. Changing this default
+    /// requires a breaking contract revision (v0.1 §3.1).
+    fn default() -> Self {
+        PluginLifetime::Resident
+    }
+}
+
+impl PluginLifetime {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PluginLifetime::Ephemeral => "ephemeral",
+            PluginLifetime::Resident => "resident",
+        }
+    }
+}
+
 /// How the plugin process is launched (PLUGIN-CONTRACT-v0.1 §5, ADR-0009).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSpec {
@@ -450,6 +481,11 @@ pub struct RuntimeSpec {
     pub executable: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Lifetime policy (ADR-0019): additive, orthogonal to `type`. An
+    /// unknown value (`"session"`, wrong type) fails deserialization —
+    /// validation is fail-closed, never a silent downgrade to Resident.
+    #[serde(default)]
+    pub lifetime: PluginLifetime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -585,6 +621,15 @@ impl PluginManifest {
             .unwrap_or(&[])
     }
 
+    /// Lifetime policy (ADR-0019): `runtime.lifetime` when declared, else
+    /// Resident (legacy manifests without a `runtime` object at all).
+    pub fn lifetime(&self) -> PluginLifetime {
+        self.runtime
+            .as_ref()
+            .map(|rt| rt.lifetime)
+            .unwrap_or_default()
+    }
+
     /// True when the manifest declares the Python script runtime.
     pub fn is_python(&self) -> bool {
         self.runtime
@@ -675,6 +720,88 @@ mod tests {
             PluginManifest::parse(r#"{"id":"e","name":"E","executable":"legacy.exe"}"#).unwrap();
         assert_eq!(legacy.effective_executable(), "legacy.exe");
         assert!(legacy.spawn_args().is_empty());
+    }
+
+    // ---- Plugin Lifetime v0.1 contract (ADR-0019, CAT-LIFE-001..007) ----
+
+    /// CAT-LIFE-001: an absent `runtime.lifetime` maps to Resident
+    /// (legacy compatibility, INV-LIFE-001).
+    #[test]
+    fn cat_life_001_absent_lifetime_defaults_resident() {
+        let m = PluginManifest::parse(r#"{"id":"e","name":"E","executable":"x.exe"}"#).unwrap();
+        assert_eq!(m.lifetime(), PluginLifetime::Resident);
+        let m2 = PluginManifest::parse(
+            r#"{"id":"e","name":"E","runtime":{"type":"process","executable":"x.exe"}}"#,
+        )
+        .unwrap();
+        assert_eq!(m2.lifetime(), PluginLifetime::Resident);
+    }
+
+    /// CAT-LIFE-002 / CAT-LIFE-003: explicit values parse.
+    #[test]
+    fn cat_life_002_003_explicit_lifetime_parses() {
+        let m = PluginManifest::parse(
+            r#"{"id":"e","name":"E","runtime":{"type":"process","executable":"x.exe","lifetime":"resident"}}"#,
+        )
+        .unwrap();
+        assert_eq!(m.lifetime(), PluginLifetime::Resident);
+        let m = PluginManifest::parse(
+            r#"{"id":"e","name":"E","runtime":{"type":"python","executable":"x.py","lifetime":"ephemeral"}}"#,
+        )
+        .unwrap();
+        assert_eq!(m.lifetime(), PluginLifetime::Ephemeral);
+    }
+
+    /// CAT-LIFE-004: `session` is recognized but rejected with a validation
+    /// error — never silently downgraded to Resident (v0.1 §3.1).
+    #[test]
+    fn cat_life_004_session_rejected_not_downgraded() {
+        let err = PluginManifest::parse(
+            r#"{"id":"e","name":"E","runtime":{"type":"process","executable":"x.exe","lifetime":"session"}}"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("session"), "{err}");
+    }
+
+    /// CAT-LIFE-005: malformed lifetime values (number/object/null) are
+    /// rejected without panicking.
+    #[test]
+    fn cat_life_005_malformed_lifetime_rejected() {
+        for bad in ["1", "{}", "null", "\"EPHEMERAL\"", "true"] {
+            let raw = format!(
+                r#"{{"id":"e","name":"E","runtime":{{"type":"process","executable":"x.exe","lifetime":{bad}}}}}"#
+            );
+            assert!(
+                PluginManifest::parse(&raw).is_err(),
+                "lifetime {bad} must be rejected"
+            );
+        }
+    }
+
+    /// CAT-LIFE-006: serialization roundtrip preserves the lifetime.
+    #[test]
+    fn cat_life_006_lifetime_roundtrip() {
+        for lt in [PluginLifetime::Ephemeral, PluginLifetime::Resident] {
+            let v = serde_json::to_value(lt).unwrap();
+            let back: PluginLifetime = serde_json::from_value(v).unwrap();
+            assert_eq!(back, lt);
+        }
+        assert_eq!(
+            serde_json::to_value(PluginLifetime::Ephemeral).unwrap(),
+            serde_json::json!("ephemeral")
+        );
+    }
+
+    /// CAT-LIFE-007: `runtime.type` and `lifetime` are orthogonal —
+    /// changing the runtime kind never changes the lifetime.
+    #[test]
+    fn cat_life_007_runtime_type_orthogonal() {
+        for kind in ["process", "python"] {
+            let raw = format!(
+                r#"{{"id":"e","name":"E","runtime":{{"type":"{kind}","executable":"x","lifetime":"ephemeral"}}}}"#
+            );
+            assert_eq!(PluginManifest::parse(&raw).unwrap().lifetime(), PluginLifetime::Ephemeral);
+        }
     }
 
     #[test]

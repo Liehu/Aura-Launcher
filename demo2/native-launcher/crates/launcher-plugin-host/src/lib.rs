@@ -18,7 +18,13 @@ use launcher_ipc::{
 };
 use thiserror::Error;
 
+pub mod lifetime;
 pub mod runtime;
+
+pub use lifetime::{
+    lifecycle_metrics, ExecutionMode, LifecycleMetrics, PluginLifetimePolicy, SHUTDOWN_GRACE_MS,
+};
+pub use launcher_domain::PluginLifetime;
 
 #[derive(Debug, Error)]
 pub enum PluginError {
@@ -143,6 +149,12 @@ pub struct PluginHandle {
     /// P0-A: process lifecycle (spawn/Job Object/bounded IO/kill/reap)
     /// lives in launcher-runtime; the broker owns only plugin semantics.
     session: ProcessSession,
+    /// ADR-0019: validated-manifest lifetime policy (ephemeral invocations
+    /// shut the process down at the end of query/execute_action).
+    policy: PluginLifetimePolicy,
+    /// Invocation id (query_id / execution_id) of the in-flight or last
+    /// invocation, for lifecycle logging only.
+    last_invocation_id: Option<String>,
     /// Monotonic request id counter (JSON-RPC `id`).
     next_request_id: u64,
 }
@@ -206,11 +218,24 @@ impl PluginHandle {
             max_stdout_line_bytes: launcher_ipc::MAX_FRAME_BYTES,
             ..RuntimeLimits::default()
         };
-        let session = ProcessSession::spawn(&spec, &limits)
-            .map_err(Self::map_runtime_error)?;
+        // ADR-0019 L3: the policy is derived from the VALIDATED manifest —
+        // the only sanctioned source of lifecycle decisions.
+        let policy = PluginLifetimePolicy::from_manifest(&manifest);
+        let session = match ProcessSession::spawn(&spec, &limits) {
+            Ok(s) => {
+                lifetime::record_spawn(true);
+                s
+            }
+            Err(e) => {
+                lifetime::record_spawn(false);
+                return Err(Self::map_runtime_error(e));
+            }
+        };
         let mut handle = Self {
             manifest,
             session,
+            policy,
+            last_invocation_id: None,
             next_request_id: 0,
         };
         // Contract handshake (§12): initialize MUST succeed before the plugin
@@ -284,6 +309,93 @@ impl PluginHandle {
         &self.manifest
     }
 
+    /// ADR-0019: the lifetime policy this handle was spawned under.
+    pub fn lifetime(&self) -> PluginLifetime {
+        match self.policy.mode() {
+            ExecutionMode::Ephemeral => PluginLifetime::Ephemeral,
+            ExecutionMode::Resident => PluginLifetime::Resident,
+        }
+    }
+
+    /// Non-blocking exit reaper: refreshes the session lifecycle state.
+    pub fn poll_exit(&mut self) -> Option<launcher_runtime::ProcessTermination> {
+        self.session.try_termination()
+    }
+
+    /// True while the plugin process (or any of its Job Object descendants)
+    /// is still alive. INV-LIFE-003 evidence primitive.
+    pub fn process_running(&self) -> bool {
+        self.session.state().is_alive()
+    }
+
+    /// Resident idle reclaim check (INV-LIFE-006): the process has been
+    /// inactive past the manifest idle timeout and is reclaimable. Ephemeral
+    /// and window plugins never qualify (ADR-0019: window lifetime belongs
+    /// to P3.1 window management).
+    pub fn idle_expired(&self) -> bool {
+        self.policy.idle_reclaimable()
+            && self.process_running()
+            && self.session.last_activity().elapsed() >= self.policy.idle_timeout()
+    }
+
+    /// End-of-invocation lifecycle (v0.1 §2.1/§6, L4/L5): for an ephemeral
+    /// plugin, one invocation = one process, so after EVERY query /
+    /// execute_action attempt the process is gracefully shut down (bounded
+    /// wait, then Job Object force-kill) and its absence is verified. The
+    /// invocation result itself is never modified — cleanup failures are
+    /// logged, not surfaced (ShutdownTimeout maps internally).
+    fn finish_invocation(&mut self, operation: &str, invocation_id: &str) {
+        if !self.policy.is_ephemeral() {
+            return;
+        }
+        lifetime::record_ephemeral_invocation();
+        let spawn_pid = self.session.pid();
+        if !self.process_running() {
+            tracing::info!(
+                plugin = %self.manifest.id,
+                lifetime = "ephemeral",
+                operation,
+                invocation_id,
+                pid = spawn_pid,
+                forced_kill = false,
+                "lifecycle.invocation_closed"
+            );
+            return;
+        }
+        let started = Instant::now();
+        let req = Request::new(self.next_request_id(), method::SHUTDOWN, serde_json::json!({}));
+        if self.request(&req, self.policy.shutdown_grace()).is_err() {
+            // unresponsive or already dead: fall through to the bounded wait
+        }
+        let terminated = self.session.shutdown();
+        let forced = matches!(
+            terminated,
+            Err(RtError::ShutdownTimeout) | Err(RtError::TransportBroken)
+        );
+        if forced {
+            lifetime::record_forced_kill();
+        }
+        let exit_code = terminated.ok().and_then(|t| match t {
+            launcher_runtime::ProcessTermination::Exited { code } => code,
+            _ => None,
+        });
+        tracing::info!(
+            plugin = %self.manifest.id,
+            lifetime = "ephemeral",
+            operation,
+            invocation_id,
+            pid = spawn_pid,
+            forced_kill = forced,
+            exit_code = ?exit_code,
+            shutdown_ms = started.elapsed().as_millis() as u64,
+            "lifecycle.invocation_closed"
+        );
+        debug_assert!(
+            !self.process_running(),
+            "ephemeral plugin process must be absent after invocation"
+        );
+    }
+
     fn request(&mut self, req: &Request, timeout: Duration) -> Result<Response, PluginError> {
         // runtime facts -> plugin semantics (review 53 SS7): the mapping
         // lives HERE, never inside launcher-runtime.
@@ -320,10 +432,22 @@ impl PluginHandle {
     /// Query the plugin and convert results into Commands. Bounded by the
     /// manifest timeout; the process is killed on timeout. Every query gets
     /// a Host-generated `query_id` the plugin MUST echo (contract §7).
+    ///
+    /// ADR-0019 L4: for an `ephemeral` plugin this is ONE full lifecycle —
+    /// the process is shut down and verified absent before returning, and
+    /// the next query must use a fresh process instance.
     pub fn query(&mut self, text: &str) -> Result<Vec<DomainCommand>, PluginError> {
+        let r = self.query_invocation(text);
+        let invocation_id = self.last_invocation_id.take().unwrap_or_default();
+        self.finish_invocation("query", &invocation_id);
+        r
+    }
+
+    fn query_invocation(&mut self, text: &str) -> Result<Vec<DomainCommand>, PluginError> {
         let timeout = Duration::from_millis(self.manifest.timeout_ms);
         let started = Instant::now();
         let query_id = next_query_id();
+        self.last_invocation_id = Some(query_id.clone());
         let req = Request::new(
             self.next_request_id(),
             method::QUERY,
@@ -488,7 +612,25 @@ impl PluginHandle {
     /// (P1-FIX-01 / INV-AUTH-005: exactly one execution_id per attempt —
     /// the host layer never re-mints) and validates the echo. Bounded by
     /// the manifest timeout; the process is killed on timeout.
+    ///
+    /// ADR-0019 L5: for an `ephemeral` plugin this is ONE full lifecycle —
+    /// the process exits after the attempt (including a plugin business
+    /// error: the invocation lifetime naturally ends), and a retry always
+    /// runs in a NEW process with a NEW caller-minted execution_id.
     pub fn execute_action(
+        &mut self,
+        action_id: &str,
+        input: &serde_json::Value,
+        execution_id: &str,
+        context_generation: u64,
+    ) -> Result<serde_json::Value, PluginError> {
+        self.last_invocation_id = Some(execution_id.to_string());
+        let r = self.execute_action_invocation(action_id, input, execution_id, context_generation);
+        self.finish_invocation("execute_action", execution_id);
+        r
+    }
+
+    fn execute_action_invocation(
         &mut self,
         action_id: &str,
         input: &serde_json::Value,

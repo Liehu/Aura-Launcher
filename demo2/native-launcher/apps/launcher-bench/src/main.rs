@@ -479,10 +479,133 @@ fn run_attribution() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn run_plugin_lifetime() -> anyhow::Result<()> {
+    use launcher_domain::PluginManifest;
+    use launcher_plugin_host::PluginHandle;
+
+    const ROUNDS: usize = 50;
+    const ECHO_PY: &str = r#"
+import json, sys
+for line in sys.stdin:
+    req = json.loads(line)
+    m = req.get("method")
+    if m == "initialize":
+        res = {"protocol_version": req["params"]["protocol_version"]}
+    elif m == "query":
+        res = [{"title": "echo:" + req["params"]["text"], "score": 0.5}]
+    elif m == "execute_action":
+        res = {"execution_id": req["params"]["execution_id"], "result": {}}
+    elif m == "shutdown":
+        break
+    else:
+        continue
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": res}) + "\n")
+    sys.stdout.flush()
+"#;
+
+    let python = std::env::var("LAUNCHER_PYTHON")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "python".into());
+    let dir = std::env::temp_dir().join(format!("nl_bench_life_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join("plugin.py"), ECHO_PY)?;
+    let manifest = |lifetime: &str| -> PluginManifest {
+        let mut m: PluginManifest = serde_json::from_value(serde_json::json!({
+            "id": "bench.life",
+            "name": "Bench",
+            "runtime": { "type": "python", "executable": "plugin.py", "lifetime": lifetime },
+            "timeout_ms": 5000,
+            "idle_timeout_ms": 600_000,
+        }))
+        .unwrap();
+        m.interpreter = Some(std::path::PathBuf::from(&python));
+        m
+    };
+
+    let timed = |f: &mut dyn FnMut()| -> u64 {
+        let t = Instant::now();
+        f();
+        t.elapsed().as_micros() as u64
+    };
+
+    // cold ephemeral: every iteration pays spawn + initialize + invoke +
+    // shutdown + exit (spec §10: cold_ephemeral_query / _execute)
+    let mut cold_eph_query = Vec::new();
+    let mut cold_eph_execute = Vec::new();
+    for i in 0..ROUNDS {
+        let mut h = PluginHandle::spawn(manifest("ephemeral"), &dir)?;
+        let us = timed(&mut || {
+            let _ = h.query(&format!("q{i}"));
+        });
+        cold_eph_query.push(us);
+        let us = timed(&mut || {
+            let _ = h.execute_action("a", &serde_json::json!(null), &format!("e-{i}"), 0);
+        });
+        cold_eph_execute.push(us);
+    }
+
+    // warm resident: one process, repeated invocations
+    let mut h = PluginHandle::spawn(manifest("resident"), &dir)?;
+    let _ = h.query("warmup");
+    let mut warm_res_query = Vec::new();
+    let mut warm_res_execute = Vec::new();
+    for i in 0..ROUNDS {
+        let us = timed(&mut || {
+            let _ = h.query(&format!("q{i}"));
+        });
+        warm_res_query.push(us);
+        let us = timed(&mut || {
+            let _ = h.execute_action("a", &serde_json::json!(null), &format!("w-{i}"), 0);
+        });
+        warm_res_execute.push(us);
+    }
+    h.shutdown();
+
+    let stats = |mut v: Vec<u64>| {
+        v.sort();
+        serde_json::json!({
+            "p50_us": percentile(v.clone(), 0.5),
+            "p95_us": percentile(v.clone(), 0.95),
+            "p99_us": percentile(v.clone(), 0.99),
+            "max_us": v.iter().copied().max().unwrap_or(0),
+        })
+    };
+    let lm = launcher_plugin_host::lifecycle_metrics();
+    let report = serde_json::json!({
+        "version": 1,
+        "note": "Plugin Lifetime v0.1 (ADR-0019) per-invocation latency, python echo fixture, cold = spawn+init+invoke+shutdown per iteration",
+        "rounds": ROUNDS,
+        "cold_ephemeral_query_us": stats(cold_eph_query),
+        "cold_ephemeral_execute_us": stats(cold_eph_execute),
+        "warm_resident_query_us": stats(warm_res_query),
+        "warm_resident_execute_us": stats(warm_res_execute),
+        "lifecycle_metrics": {
+            "spawn_count": lm.spawn_count,
+            "successful_spawn_count": lm.successful_spawn_count,
+            "forced_kill_count": lm.forced_kill_count,
+            "ephemeral_invocations": lm.ephemeral_invocations,
+        },
+    });
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    std::fs::create_dir_all("benchmarks")?;
+    std::fs::write(
+        "benchmarks/plugin-lifetime.json",
+        serde_json::to_string_pretty(&report)?,
+    )?;
+    println!("plugin lifetime report written to benchmarks/plugin-lifetime.json");
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "print".into());
     if mode == "attribution" {
         return run_attribution();
+    }
+    if mode == "plugin-lifetime" {
+        return run_plugin_lifetime();
     }
     if mode == "soak" {
         let ops: usize = std::env::args()

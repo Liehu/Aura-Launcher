@@ -2765,6 +2765,7 @@ dependencies = [
  "launcher-core",
  "launcher-domain",
  "launcher-indexer",
+ "launcher-plugin-host",
  "launcher-search",
  "launcher-ui",
  "serde_json",

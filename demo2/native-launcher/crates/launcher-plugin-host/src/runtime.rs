@@ -98,6 +98,7 @@ mod tests {
                 kind: kind.into(),
                 executable: Some(executable.into()),
                 args: vec![],
+                lifetime: launcher_domain::PluginLifetime::Resident,
             }),
             capabilities: vec![],
             timeout_ms: 2000,

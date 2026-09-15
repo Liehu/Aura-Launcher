@@ -1,0 +1,35 @@
+{
+  "cold_ephemeral_execute_us": {
+    "max_us": 90,
+    "p50_us": 51,
+    "p95_us": 90,
+    "p99_us": 90
+  },
+  "cold_ephemeral_query_us": {
+    "max_us": 28634,
+    "p50_us": 13893,
+    "p95_us": 27060,
+    "p99_us": 28634
+  },
+  "lifecycle_metrics": {
+    "ephemeral_invocations": 100,
+    "forced_kill_count": 0,
+    "spawn_count": 51,
+    "successful_spawn_count": 51
+  },
+  "note": "Plugin Lifetime v0.1 (ADR-0019) per-invocation latency, python echo fixture, cold = spawn+init+invoke+shutdown per iteration",
+  "rounds": 50,
+  "version": 1,
+  "warm_resident_execute_us": {
+    "max_us": 209,
+    "p50_us": 50,
+    "p95_us": 111,
+    "p99_us": 209
+  },
+  "warm_resident_query_us": {
+    "max_us": 220,
+    "p50_us": 58,
+    "p95_us": 116,
+    "p99_us": 220
+  }
+}

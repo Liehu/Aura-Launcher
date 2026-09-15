@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 launcher-core = { workspace = true }
 launcher-domain = { workspace = true }
+launcher-plugin-host = { workspace = true }
 launcher-indexer = { workspace = true }
 launcher-search = { workspace = true }
 serde_json = { workspace = true }
