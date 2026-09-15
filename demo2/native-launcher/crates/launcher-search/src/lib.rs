@@ -53,11 +53,20 @@ pub struct RankingWeights {
     pub title_contains: f32,
     /// Plugin hint contribution ceiling (ADR-0011: hint max < title exact).
     pub plugin_hint: f32,
+    // ---- P3-C calibration additions (weights v3) ----
+    /// A TITLE-WORD hit (e.g. "GitHub" inside "GitHub Desktop"): capped
+    /// between prefix and full-title exact so word hits never tie an
+    /// exact builtin application.
+    pub title_word: f32,
+    /// Plugin hint weight when the item ALSO matched lexically (spec §9
+    /// flood control: full hint is reserved for non-lexical computed
+    /// results like calculators).
+    pub plugin_hint_matched: f32,
 }
 
 /// P25-D02: weight schema version — bump when field semantics change so a
 /// persisted config can be validated against the code that reads it.
-pub const RANKING_WEIGHTS_VERSION: u32 = 2;
+pub const RANKING_WEIGHTS_VERSION: u32 = 3;
 
 impl RankingWeights {
     /// Serialize for config persistence (versioned).
@@ -106,6 +115,8 @@ impl RankingWeights {
             ("title_prefix", &mut out.title_prefix),
             ("title_contains", &mut out.title_contains),
             ("plugin_hint", &mut out.plugin_hint),
+            ("title_word", &mut out.title_word),
+            ("plugin_hint_matched", &mut out.plugin_hint_matched),
         ];
         for (name, field) in fields {
             if let Some(val) = w[name].as_f64() {
@@ -136,7 +147,17 @@ impl Default for RankingWeights {
             title_exact: 100.0,
             title_prefix: 60.0,
             title_contains: 40.0,
+            /// P3-C calibration (spec §7/§9): a TITLE-WORD hit is not a
+            /// full-title hit — capped below prefix? no: between prefix and
+            /// exact, so "GitHub" (word) ranks above contains but below an
+            /// exact builtin application.
+            title_word: 85.0,
             plugin_hint: 45.0,
+            /// P3-C calibration (spec §9): the self-declared provider hint
+            /// surfaces non-lexical computed results (calculator) at FULL
+            /// weight, but when the item ALSO matched lexically it is
+            /// damped so plugin floods cannot drown builtin applications.
+            plugin_hint_matched: 15.0,
         }
     }
 }
@@ -219,7 +240,9 @@ pub fn score_with_parts(
         }
     }
     for word in title.split(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.')) {
-        let word_score = best_title_score(word, q, w);
+        // P3-C: a word hit is capped below a full-title hit — "GitHub"
+        // (word exact) must not tie "Notepad" (title exact).
+        let word_score = best_title_score(word, q, w).min(w.title_word);
         if word_score > title_score {
             title_score = word_score;
             field = MatchedField::TitleWord;
@@ -287,6 +310,14 @@ pub fn score_with_parts(
         if all {
             parts.multi_token = w.multi_token;
         }
+    }
+    // P3-C calibration (spec §9): the hint's job is surfacing non-lexical
+    // computed results; stacked on a lexical match it is damped so plugin
+    // floods cannot drown builtin applications (hint_matched < title_prefix
+    // + app prior is the guarded invariant).
+    if parts.title + parts.keyword + parts.fuzzy > 0.0 {
+        parts.plugin_hint =
+            (parts.plugin_hint / w.plugin_hint.max(1.0)) * w.plugin_hint_matched;
     }
     if parts.total() > 0.0 {
         parts.type_prior = type_prior(command.category);
@@ -524,6 +555,121 @@ mod tests {
             }],
             target: None,
         }
+    }
+
+    // ---- P3-C: Verification / Calibration fixtures (spec §6/§7/§9).
+    // NO ranking redesign: these tests pin the EXISTING pipeline
+    // (exact/prefix/fuzzy + type_prior + deterministic rank) to the P3
+    // principles: built-in applications outrank low-value results.
+
+    /// A result from an arbitrary source with its provider score hint.
+    fn from_provider(
+        id: &str,
+        title: &str,
+        provider: &str,
+        category: Category,
+        score_hint: f32,
+    ) -> Command {
+        Command {
+            id: id.into(),
+            title: title.into(),
+            subtitle: None,
+            icon: None,
+            provider_id: provider.into(),
+            score: score_hint,
+            keywords: vec![],
+            category,
+            actions: vec![],
+            target: None,
+        }
+    }
+
+    /// F1 — notepad: the exact builtin application wins over Notepad++
+    /// (prefix), a text file, a web result and an unrelated plugin item.
+    #[test]
+    fn p3c_f1_notepad_exact_builtin_first() {
+        let q = QueryContext::parse("notepad");
+        let ranked = rank(
+            vec![
+                from_provider("web", "notepad online", "web", Category::Command, 0.9),
+                from_provider("f", "notepad-notes.txt", "files", Category::File, 0.5),
+                from_provider("pp", "Notepad++", "apps", Category::Application, 0.0),
+                from_provider(
+                    "plug",
+                    "notepadthing",
+                    "plugin:misc",
+                    Category::Plugin,
+                    0.9,
+                ),
+                from_provider("np", "Notepad", "apps", Category::Application, 0.0),
+            ],
+            &q,
+            50,
+        );
+        assert_eq!(ranked[0].title, "Notepad", "exact builtin app first");
+        let pos = |t: &str| ranked.iter().position(|c| c.title == t).unwrap();
+        assert!(
+            pos("Notepad") < pos("notepad online"),
+            "exact application above word-exact web result"
+        );
+        assert!(
+            pos("Notepad++") < pos("notepadthing"),
+            "prefix builtin app above plugin-flood item (spec section 9)"
+        );
+    }
+
+    /// F2 — git: high-value application/command first; the git-named FILE
+    /// and the plugin noise follow by match class, not by flood.
+    #[test]
+    fn p3c_f2_git_value_ordering() {
+        let q = QueryContext::parse("git");
+        let ranked = rank(
+            vec![
+                from_provider("plug", "github something", "plugin:x", Category::Plugin, 0.9),
+                from_provider("f", "git-cheatsheet.md", "files", Category::File, 0.4),
+                from_provider("gexe", "git.exe", "apps", Category::Application, 0.0),
+                from_provider("cmd", "Git Bash", "commands", Category::Command, 0.0),
+            ],
+            &q,
+            50,
+        );
+        let pos = |t: &str| ranked.iter().position(|c| c.title == t).unwrap();
+        assert!(pos("git.exe") < pos("github something"), "app beats plugin flood");
+        assert!(pos("git.exe") <= pos("git-cheatsheet.md"), "app beats file");
+    }
+
+    /// F3 — exact filename: when the query IS a filename, the exact file
+    /// beats an unrelated application (match class dominates).
+    #[test]
+    fn p3c_f3_exact_filename_beats_unrelated_app() {
+        let q = QueryContext::parse("readme");
+        let ranked = rank(
+            vec![
+                from_provider("a", "Randomizer", "apps", Category::Application, 0.0),
+                from_provider("f", "README.md", "files", Category::File, 0.0),
+            ],
+            &q,
+            50,
+        );
+        // "Randomizer" only fuzzy-matches; README.md contains the query.
+        assert_eq!(ranked[0].title, "README.md");
+    }
+
+    /// F4 — tie determinism: identical signals twice → identical order.
+    #[test]
+    fn p3c_f4_ties_are_deterministic() {
+        let q = QueryContext::parse("term");
+        let build = || {
+            vec![
+                from_provider("p1", "terminal-a", "apps", Category::Application, 0.0),
+                from_provider("p2", "terminal-b", "apps", Category::Application, 0.0),
+                from_provider("p3", "terminal-c", "apps", Category::Application, 0.0),
+            ]
+        };
+        let r1 = rank(build(), &q, 50);
+        let r2 = rank(build(), &q, 50);
+        let ids = |r: &Vec<Command>| r.iter().map(|c| c.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(&r1), ids(&r2), "same input → same order");
     }
 
     #[test]

@@ -36,11 +36,17 @@ static DESKTOP: std::sync::OnceLock<Mutex<std::collections::HashSet<isize>>> =
 /// Entry: open (or raise) the management window and refresh its models.
 /// Dispatches to the UI thread (Slint windows are UI-thread objects).
 pub fn open(state: Arc<Mutex<AppState>>) {
-    let _ = STATE.set(state.clone());
-    let _ = slint::invoke_from_event_loop(open_on_ui_thread);
+    open_tab(state, None);
 }
 
-fn open_on_ui_thread() {
+/// P3-H (spec §15): tray one-hop entries land on a SPECIFIC tab
+/// (0 = general/settings, 1 = plugins — ManagementWindow `tab` property).
+pub fn open_tab(state: Arc<Mutex<AppState>>, tab: Option<i32>) {
+    let _ = STATE.set(state.clone());
+    let _ = slint::invoke_from_event_loop(move || open_on_ui_thread(tab));
+}
+
+fn open_on_ui_thread(tab: Option<i32>) {
     WIN.with(|slot| {
         if slot.borrow().is_none() {
             match launcher_ui::ManagementWindow::new() {
@@ -55,6 +61,9 @@ fn open_on_ui_thread() {
             }
         }
         if let Some(w) = slot.borrow().as_ref() {
+            if let Some(tab) = tab {
+                w.set_tab(tab);
+            }
             let _ = w.show();
             crate::foreground::recenter_and_repaint(w.window());
             refresh(w);
@@ -90,16 +99,20 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
             let new = new;
             if let Some(w) = cb.upgrade() {
                 match key.as_str() {
-                    "autostart" => apply_setting(&w, &key, if new { "true" } else { "false" }, |cfg| {
-                        let old = cfg.autostart.to_string();
-                        cfg.autostart = new;
-                        old
-                    }),
-                    "watch_enabled" => apply_setting(&w, &key, if new { "true" } else { "false" }, |cfg| {
-                        let old = cfg.watch_enabled.to_string();
-                        cfg.watch_enabled = new;
-                        old
-                    }),
+                    "autostart" => {
+                        apply_setting(&w, &key, if new { "true" } else { "false" }, |cfg| {
+                            let old = cfg.autostart.to_string();
+                            cfg.autostart = new;
+                            old
+                        })
+                    }
+                    "watch_enabled" => {
+                        apply_setting(&w, &key, if new { "true" } else { "false" }, |cfg| {
+                            let old = cfg.watch_enabled.to_string();
+                            cfg.watch_enabled = new;
+                            old
+                        })
+                    }
                     _ => set_save_status(&w, false, "未知的开关项"),
                 }
             }
@@ -173,18 +186,32 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
             if key != "hotkey" {
                 return;
             }
-            let Some(main) = normalize_main_key(&text) else { return };
+            let Some(main) = normalize_main_key(&text) else {
+                return;
+            };
             if !(ctrl || alt || shift || meta) {
                 if let Some(w) = cb.upgrade() {
-                    set_save_status(&w, false, "热键至少需要一个修饰键（Ctrl / Alt / Shift / Win）");
+                    set_save_status(
+                        &w,
+                        false,
+                        "热键至少需要一个修饰键（Ctrl / Alt / Shift / Win）",
+                    );
                 }
                 return;
             }
             let mut combo = String::new();
-            if ctrl { combo.push_str("Ctrl+"); }
-            if alt { combo.push_str("Alt+"); }
-            if shift { combo.push_str("Shift+"); }
-            if meta { combo.push_str("Win+"); }
+            if ctrl {
+                combo.push_str("Ctrl+");
+            }
+            if alt {
+                combo.push_str("Alt+");
+            }
+            if shift {
+                combo.push_str("Shift+");
+            }
+            if meta {
+                combo.push_str("Win+");
+            }
             combo.push_str(&main);
             CAPTURING.with(|c| *c.borrow_mut() = None);
             if let Some(w) = cb.upgrade() {
@@ -255,8 +282,12 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
     let cb_clear = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |w| {
         w.on_follow_set(move |pin, target, title| {
-            let Ok(pin) = pin.to_string().parse::<isize>() else { return };
-            let Ok(target) = target.to_string().parse::<isize>() else { return };
+            let Ok(pin) = pin.to_string().parse::<isize>() else {
+                return;
+            };
+            let Ok(target) = target.to_string().parse::<isize>() else {
+                return;
+            };
             match crate::win_platform::follow_set(pin, target, title.to_string()) {
                 Ok(()) => {
                     tracing::info!(pin, target, "management.follow_set");
@@ -268,7 +299,9 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
             }
         });
         w.on_follow_clear(move |pin| {
-            let Ok(pin) = pin.to_string().parse::<isize>() else { return };
+            let Ok(pin) = pin.to_string().parse::<isize>() else {
+                return;
+            };
             if crate::win_platform::follow_clear(pin) {
                 tracing::info!(pin, "management.follow_cleared");
                 if let Some(w) = cb_clear.upgrade() {
@@ -281,7 +314,9 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
     let cb_desk = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |w| {
         w.on_desktop_pin_toggled(move |hwnd, desktop| {
-            let Ok(h) = hwnd.to_string().parse::<isize>() else { return };
+            let Ok(h) = hwnd.to_string().parse::<isize>() else {
+                return;
+            };
             let res = if desktop {
                 crate::win_platform::pin_desktop(h)
             } else {
@@ -322,7 +357,9 @@ fn wire(weak: Weak<launcher_ui::ManagementWindow>) {
     let cb = weak.clone();
     let _ = weak.upgrade_in_event_loop(move |w| {
         w.on_pin_toggled(move |hwnd, pin| {
-            let Ok(h) = hwnd.to_string().parse::<isize>() else { return };
+            let Ok(h) = hwnd.to_string().parse::<isize>() else {
+                return;
+            };
             match crate::win_platform::set_topmost(h, pin) {
                 Ok(()) => {
                     crate::win_platform::pin_mark(h, pin);
@@ -361,45 +398,85 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
     let mut items: Vec<launcher_ui::SettingItem> = Vec::new();
     let mut focus_ix: i32 = 0;
     let capturing = CAPTURING.with(|c| c.borrow().clone());
-    match launcher_config::load_or_create(
-        &launcher_config::config_path().unwrap_or_default(),
-    ) {
+    match launcher_config::load_or_create(&launcher_config::config_path().unwrap_or_default()) {
         Ok(cfg) => {
             items.push(group_item("外观"));
             items.push(item(
-                "theme_mode", "主题模式", "弹窗与管理窗口配色，切换立即生效",
-                "segmented", cfg.theme_mode.clone(), false,
-                cfg.result_limit.clamp(4, 16) as i32, 4, 16,
+                "theme_mode",
+                "主题模式",
+                "弹窗与管理窗口配色，切换立即生效",
+                "segmented",
+                cfg.theme_mode.clone(),
+                false,
+                cfg.result_limit.clamp(4, 16) as i32,
+                4,
+                16,
                 vec!["system".into(), "light".into(), "dark".into()],
-                true, focus_ix,
+                true,
+                focus_ix,
             ));
             focus_ix += 1;
             items.push(group_item("行为"));
             items.push(item(
-                "autostart", "开机自启", "登录时自动启动 Native Launcher",
-                "toggle", String::new(), cfg.autostart,
-                0, 0, 0, vec![], true, focus_ix,
+                "autostart",
+                "开机自启",
+                "登录时自动启动 Native Launcher",
+                "toggle",
+                String::new(),
+                cfg.autostart,
+                0,
+                0,
+                0,
+                vec![],
+                true,
+                focus_ix,
             ));
             focus_ix += 1;
             items.push(group_item("性能"));
             items.push(item(
-                "watch_enabled", "文件监视", "索引目录变化时增量更新（关闭后按周期重建）",
-                "toggle", String::new(), cfg.watch_enabled,
-                0, 0, 0, vec![], true, focus_ix,
+                "watch_enabled",
+                "文件监视",
+                "索引目录变化时增量更新（关闭后按周期重建）",
+                "toggle",
+                String::new(),
+                cfg.watch_enabled,
+                0,
+                0,
+                0,
+                vec![],
+                true,
+                focus_ix,
             ));
             focus_ix += 1;
             items.push(item(
-                "result_limit", "结果条数", "搜索结果最多显示的行数（重启后生效）",
-                "slider", String::new(), false,
-                cfg.result_limit.clamp(4, 16) as i32, 4, 16, vec![], true, focus_ix,
+                "result_limit",
+                "结果条数",
+                "搜索结果最多显示的行数（重启后生效）",
+                "slider",
+                String::new(),
+                false,
+                cfg.result_limit.clamp(4, 16) as i32,
+                4,
+                16,
+                vec![],
+                true,
+                focus_ix,
             ));
             focus_ix += 1;
             items.push(group_item("快捷键"));
             items.push(item(
-                "hotkey", "呼出热键", "点击输入框后按下新组合（至少一个修饰键，Esc 取消）",
-                "hotkey", cfg.hotkey.clone(), false,
-                0, 0, 0, vec![],
-                capturing.as_deref().map(|k| k != "hotkey").unwrap_or(true), focus_ix,
+                "hotkey",
+                "呼出热键",
+                "点击输入框后按下新组合（至少一个修饰键，Esc 取消）",
+                "hotkey",
+                cfg.hotkey.clone(),
+                false,
+                0,
+                0,
+                0,
+                vec![],
+                capturing.as_deref().map(|k| k != "hotkey").unwrap_or(true),
+                focus_ix,
             ));
             items.push(group_item("索引目录"));
             let dirs = if cfg.index_dirs.is_empty() {
@@ -408,8 +485,18 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
                 cfg.index_dirs.join("  ·  ")
             };
             items.push(item(
-                "index_dirs", "已配置索引目录", "删除：搜索 settings index；添加：编辑 config.toml",
-                "info", dirs, false, 0, 0, 0, vec![], true, -1,
+                "index_dirs",
+                "已配置索引目录",
+                "删除：搜索 settings index；添加：编辑 config.toml",
+                "info",
+                dirs,
+                false,
+                0,
+                0,
+                0,
+                vec![],
+                true,
+                -1,
             ));
             let ai = match &cfg.llm {
                 None => "未配置（在 config.toml 添加 [llm]）".to_string(),
@@ -417,18 +504,42 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
                     "{} / {} · 远程数据 {}",
                     l.base_url,
                     l.model,
-                    if l.allow_remote_data { "已允许" } else { "仅本地" }
+                    if l.allow_remote_data {
+                        "已允许"
+                    } else {
+                        "仅本地"
+                    }
                 ),
             };
             items.push(item(
-                "ai", "AI Agent", "状态与配置（allow_remote_data）",
-                "info", ai, false, 0, 0, 0, vec![], true, -1,
+                "ai",
+                "AI Agent",
+                "状态与配置（allow_remote_data）",
+                "info",
+                ai,
+                false,
+                0,
+                0,
+                0,
+                vec![],
+                true,
+                -1,
             ));
         }
         Err(e) => {
             items.push(item(
-                "config_error", "配置读取失败", "将使用默认值；请检查 config.toml",
-                "info", format!("{e}"), false, 0, 0, 0, vec![], true, -1,
+                "config_error",
+                "配置读取失败",
+                "将使用默认值；请检查 config.toml",
+                "info",
+                format!("{e}"),
+                false,
+                0,
+                0,
+                0,
+                vec![],
+                true,
+                -1,
             ));
         }
     }
@@ -471,9 +582,9 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
             });
         }
     }
-    w.set_plugins(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
-        plugins,
-    ))));
+    w.set_plugins(slint::ModelRc::new(std::rc::Rc::new(
+        slint::VecModel::from(plugins),
+    )));
 
     let mut workflows: Vec<launcher_ui::WorkflowEntry> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(crate::data_dir().join("workflows")) {
@@ -494,9 +605,9 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
             });
         }
     }
-    w.set_workflows(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
-        workflows,
-    ))));
+    w.set_workflows(slint::ModelRc::new(std::rc::Rc::new(
+        slint::VecModel::from(workflows),
+    )));
 
     // P3.1-B1: discovered plugin windows (pid-boundary: only pids the host
     // spawned, and only manifests that declared "window": true)
@@ -544,12 +655,12 @@ fn refresh(w: &launcher_ui::ManagementWindow) {
             });
         }
     }
-    w.set_windows(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
-        windows,
-    ))));
-    w.set_targets(slint::ModelRc::new(std::rc::Rc::new(slint::VecModel::from(
-        targets,
-    ))));
+    w.set_windows(slint::ModelRc::new(std::rc::Rc::new(
+        slint::VecModel::from(windows),
+    )));
+    w.set_targets(slint::ModelRc::new(std::rc::Rc::new(
+        slint::VecModel::from(targets),
+    )));
 
     w.set_about_text(
         format!(
@@ -681,7 +792,17 @@ fn normalize_main_key(text: &str) -> Option<String> {
     let lower = t.to_lowercase();
     if matches!(
         lower.as_str(),
-        "control" | "ctrl" | "shift" | "alt" | "menu" | "meta" | "super" | "windows" | "system" | "lwin" | "rwin"
+        "control"
+            | "ctrl"
+            | "shift"
+            | "alt"
+            | "menu"
+            | "meta"
+            | "super"
+            | "windows"
+            | "system"
+            | "lwin"
+            | "rwin"
     ) {
         return None; // bare modifier: keep waiting for the full chord
     }
@@ -704,8 +825,7 @@ impl launcher_core::Provider for ManagementCommandProvider {
         let n = q.normalized.clone();
         let hit = n.contains("management")
             || n.contains("管理")
-            || n.split_whitespace().all(|w| w == "settings")
-                && !n.is_empty();
+            || n.split_whitespace().all(|w| w == "settings") && !n.is_empty();
         if hit && !n.is_empty() {
             vec![Command {
                 id: "management:open".into(),

@@ -13,14 +13,14 @@
 
 mod agent_service;
 mod autostart;
-mod management;
-mod settings_ui;
-mod tool_ui_host;
 mod editor_surface;
 mod keyboard_walkthrough;
-mod win_platform;
+mod management;
+mod settings_ui;
 mod snapshot;
+mod tool_ui_host;
 mod visual_scenarios;
+mod win_platform;
 mod workflow_service;
 
 use std::path::{Path, PathBuf};
@@ -123,7 +123,11 @@ fn build_core(
         let catalog_db = db_dir.join("catalog.db");
         let store = launcher_providers::catalog::CatalogStore::open(&catalog_db)?;
         let (gen, n) = store.reconcile_observations(&observations)?;
-        info!(catalog_generation = gen, entries = n, "application catalog persisted");
+        info!(
+            catalog_generation = gen,
+            entries = n,
+            "application catalog persisted"
+        );
         // P2.4-A05: the provider is built FROM the committed catalog — the
         // authoritative read path. Fallback: an unreadable/empty catalog
         // must not break the app provider (discovery result is still in hand).
@@ -136,15 +140,17 @@ fn build_core(
             None => (AppRegistryProvider::from_entries(entries), None),
         }
     };
-    info!(apps = apps.len(), catalog_authoritative = catalog_generation.is_some(), "application catalog ready");
+    info!(
+        apps = apps.len(),
+        catalog_authoritative = catalog_generation.is_some(),
+        "application catalog ready"
+    );
     core.register(Box::new(apps));
     // P2.4-A05: cache invalidation adopts the COMMITTED catalog generation.
     match catalog_generation {
         Some(gen) => core.set_application_generation(gen),
         None => core.bump_application_generation(),
     }
-
-
 
     // recent files (demo1 port)
     let mut recent = RecentFilesProvider::new();
@@ -217,7 +223,8 @@ fn build_core(
             roots: roots.clone(),
             ..Default::default()
         };
-        let handle = launcher_indexer::coordinator::spawn(&db_dir.join("index.db"), coordinator_cfg);
+        let handle =
+            launcher_indexer::coordinator::spawn(&db_dir.join("index.db"), coordinator_cfg);
         std::thread::Builder::new()
             .name("index-status".into())
             .spawn(move || loop {
@@ -240,7 +247,6 @@ fn build_core(
     } else if degraded_boot {
         warn!("DEGRADED BOOT: index coordinator skipped (crash-loop recovery; delete startup_state.json to reset)");
     }
-
 
     // MCP servers from config (MVP4.3): each configured server becomes a
     // discovery provider AND an executor endpoint in the Core registry
@@ -275,18 +281,15 @@ fn build_core(
                 continue;
             }
             info!(server = %m.id, url, "mcp http server configured");
-            core.register_mcp_http_server(
-                &m.id,
-                url,
-                m.allow_private_network,
-                m.allow_plain_http,
-            );
-            core.register(Box::new(launcher_core::providers::mcp::McpProvider::new_http(
-                m.id.clone(),
-                url.to_string(),
-                m.allow_private_network,
-                m.allow_plain_http,
-            )));
+            core.register_mcp_http_server(&m.id, url, m.allow_private_network, m.allow_plain_http);
+            core.register(Box::new(
+                launcher_core::providers::mcp::McpProvider::new_http(
+                    m.id.clone(),
+                    url.to_string(),
+                    m.allow_private_network,
+                    m.allow_plain_http,
+                ),
+            ));
         } else {
             info!(server = %m.id, program = %m.program, profile = profile.as_str(), "mcp server configured");
             let mut provider = launcher_core::providers::mcp::McpProvider::new(
@@ -297,15 +300,13 @@ fn build_core(
             provider.set_profile(profile);
             // P1-A: persistence is explicit opt-in (review 56 SS23); the
             // default stays ephemeral (runtime-on-demand)
-            let endpoint = launcher_mcp::executor::ServerEndpoint::stdio(
-                m.program.clone(),
-                m.args.clone(),
-            )
-            .with_profile(profile);
+            let endpoint =
+                launcher_mcp::executor::ServerEndpoint::stdio(m.program.clone(), m.args.clone())
+                    .with_profile(profile);
             let endpoint = match m.runtime.as_str() {
-                "persistent" => endpoint.with_runtime(
-                    launcher_mcp::executor::EndpointRuntime::Persistent,
-                ),
+                "persistent" => {
+                    endpoint.with_runtime(launcher_mcp::executor::EndpointRuntime::Persistent)
+                }
                 _ => endpoint,
             };
             core.register_mcp_server_with_runtime(&m.id, endpoint);
@@ -383,9 +384,7 @@ fn parse_theme_color(s: &str) -> slint::Color {
 /// displays where Windows scaling already enlarges logical pixels.
 #[cfg(windows)]
 fn apply_ui_scale(ui: &AppWindow) {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetSystemMetrics, SM_CYSCREEN,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CYSCREEN};
     let physical_h = unsafe { GetSystemMetrics(SM_CYSCREEN) }.max(1) as f32;
     let slint_scale = ui.window().scale_factor().max(1.0);
     let raw = physical_h / 1080.0 / slint_scale;
@@ -418,7 +417,10 @@ pub(crate) fn effective_light(mode: &str) -> bool {
 fn system_prefers_light() -> bool {
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
     winreg::RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", KEY_READ)
+        .open_subkey_with_flags(
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            KEY_READ,
+        )
         .and_then(|k| k.get_value::<u32, _>("AppsUseLightTheme"))
         .map(|v| v == 1)
         .unwrap_or(false)
@@ -436,6 +438,9 @@ fn apply_theme_mode(ui: &AppWindow, mode: &str) {
     ui.global::<launcher_ui::Theme>().set_light_theme(light);
     tracing::debug!(mode, light, "theme.applied");
 }
+
+/// P3-F: the default launcher hint, restored when a plugin scope exits.
+const BASE_SEARCH_HINT: &str = "Search…  try: agent · workflow · settings · =calc";
 
 struct AppState {
     /// P2.1-E5: icon pipeline (async extraction, L1/L2 cached)
@@ -459,11 +464,29 @@ struct AppState {
     current_results: Vec<Command>,
     /// P3.1: persistent plugin registry (management page enable/disable).
     plugins: std::sync::Arc<launcher_core::providers::plugin_registry::PluginRegistry>,
+    /// P3-A: explicit UI state machine (presentation state only — the
+    /// authoritative record of which UX state the popup is in).
+    ui_state: launcher_ui::ui_state::UiStateMachine,
+    /// P3-F: the query text most recently submitted (the PluginContext's
+    /// parent_query source; slint owns the LineEdit text).
+    last_query: String,
+    /// P3-I: display row → result index (None = section header row). The
+    /// keyboard cursor lives in RESULT space; this maps it onto the
+    /// interleaved display model.
+    row_map: Vec<Option<usize>>,
 }
 
 impl AppState {
     fn command_for_id(&self, id: &str) -> Option<Command> {
         self.current_results.iter().find(|c| c.id == id).cloned()
+    }
+
+    /// P3-F: business id of the currently selected result ("" when none).
+    fn selected_result_id(&self) -> String {
+        self.current_results
+            .get(self.selected)
+            .map(|c| c.id.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -482,7 +505,11 @@ impl AppState {
 /// baselines stay deterministic. The extraction thread only carries raw
 /// RGBA bytes (slint::Image is !Send); images are constructed inside the
 /// event loop from `current_results` + extracted pixels.
-fn spawn_icon_refresh(state: Arc<Mutex<AppState>>, ui_weak: slint::Weak<AppWindow>, snapshot_mode: bool) {
+fn spawn_icon_refresh(
+    state: Arc<Mutex<AppState>>,
+    ui_weak: slint::Weak<AppWindow>,
+    snapshot_mode: bool,
+) {
     if snapshot_mode {
         return;
     }
@@ -491,7 +518,9 @@ fn spawn_icon_refresh(state: Arc<Mutex<AppState>>, ui_weak: slint::Weak<AppWindo
             let st = state.lock().expect("state lock");
             let mut icons: Vec<(usize, Vec<u8>, u32, u32)> = Vec::new();
             for (i, c) in st.current_results.iter().enumerate() {
-                let Some(target) = c.target.as_ref() else { continue };
+                let Some(target) = c.target.as_ref() else {
+                    continue;
+                };
                 if !target.to_lowercase().ends_with(".exe") {
                     continue; // v0.1: executable sources only
                 }
@@ -519,15 +548,18 @@ fn spawn_icon_refresh(state: Arc<Mutex<AppState>>, ui_weak: slint::Weak<AppWindo
         }
         let _ = slint::invoke_from_event_loop(move || {
             let Ok(st) = state.lock() else { return };
-            let mut items =
-                launcher_ui::to_result_items(st.current_results.iter().cloned(), 50);
+            let (mut items, row_map) =
+                launcher_ui::to_result_rows_with_query(st.current_results.iter().cloned(), 50, "");
             drop(st);
             for (i, rgba, w, h) in &icons {
-                if *i < items.len() {
-                    let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                        rgba, *w, *h,
-                    );
-                    items[*i].icon_data = slint::Image::from_rgba8(buf);
+                // P3-I: icons index RESULTS; map onto display rows
+                if let Some(Some(row)) = row_map.get(*i) {
+                    if *row < items.len() {
+                        let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                            rgba, *w, *h,
+                        );
+                        items[*row].icon_data = slint::Image::from_rgba8(buf);
+                    }
                 }
             }
             if let Some(ui) = ui_weak.upgrade() {
@@ -544,7 +576,13 @@ fn spawn_search_or_recent(
     query: String,
     limit: usize,
 ) {
-    if query.trim().is_empty() {
+    // P3-F: inside a plugin scope even the EMPTY query is scoped (the
+    // plugin's discovery catalog), never the global recent view.
+    let in_plugin_context = state
+        .lock()
+        .map(|st| st.ui_state.current().plugin_context_id().is_some())
+        .unwrap_or(false);
+    if query.trim().is_empty() && !in_plugin_context {
         spawn_recent(state, session, ui_weak, limit);
     } else {
         spawn_search(state, session, ui_weak, query, limit);
@@ -594,11 +632,18 @@ fn spawn_recent(
         let _ = slint::invoke_from_event_loop(move || {
             if let Some(ui) = ui_weak.upgrade() {
                 // rebuild on the UI thread (ResultItem carries slint::Image)
-                let items = {
-                    let st = state.lock().expect("state lock");
-                    launcher_ui::to_result_items(st.current_results.iter().cloned(), 50)
+                let (items, row_map) = {
+                    let mut st = state.lock().expect("state lock");
+                    let (items, map) = launcher_ui::to_result_rows_with_query(
+                        st.current_results.iter().cloned(),
+                        50,
+                        "",
+                    );
+                    st.row_map = map;
+                    (items, st.row_map.clone())
                 };
                 ui.set_results(slint::ModelRc::new(slint::VecModel::from(items)));
+                ui.set_selected_index(launcher_ui::row_of_result(&row_map, 0) as i32);
             }
             // P2.1-E5: icons fill in asynchronously after publish
             spawn_icon_refresh(state, ui_weak, snapshot_mode);
@@ -629,7 +674,25 @@ fn spawn_search(
         let items = {
             let mut st = state.lock().expect("state lock");
             let results_gen = st.context_gen; // bind results to current context
-            let r = st.core.search(&query, limit.min(launcher_core::MAX_RESULTS));
+                                              // P3-F: inside a PluginContext the query is SCOPED to that one
+                                              // plugin (a launcher query scope — no cross-source ranking);
+                                              // the UI knows only the plugin_id, lifetime stays in the host.
+            let r = match st.ui_state.current().plugin_context_id() {
+                Some(plugin_id) => {
+                    let plugin_id = plugin_id.to_string();
+                    st.core.search_plugin_scoped(
+                        &plugin_id,
+                        &query,
+                        limit.min(launcher_core::MAX_RESULTS),
+                    )
+                }
+                None => st
+                    .core
+                    .search(&query, limit.min(launcher_core::MAX_RESULTS)),
+            };
+            st.last_query = query.clone();
+            let selected_id = st.selected_result_id();
+            st.ui_state.set_plugin_context(&query, &selected_id);
             if !session.is_current(query_id) {
                 tracing::debug!(query_id, "query superseded, dropping results");
                 return;
@@ -659,14 +722,20 @@ fn spawn_search(
             }
             if let Some(ui) = ui_weak.upgrade() {
                 // rebuild on the UI thread (ResultItem carries slint::Image)
-                let items = {
-                    let st = state.lock().expect("state lock");
-                    launcher_ui::to_result_items(st.current_results.iter().cloned(), 50)
+                let (items, row_map) = {
+                    let mut st = state.lock().expect("state lock");
+                    let (items, map) = launcher_ui::to_result_rows_with_query(
+                        st.current_results.iter().cloned(),
+                        50,
+                        "",
+                    );
+                    st.row_map = map;
+                    (items, st.row_map.clone())
                 };
                 ui.set_results(slint::ModelRc::new(std::rc::Rc::new(
                     slint::VecModel::from(items),
                 )));
-                ui.set_selected_index(0);
+                ui.set_selected_index(launcher_ui::row_of_result(&row_map, 0) as i32);
                 ui.set_panel_visible(false);
                 ui.set_actions(slint::ModelRc::new(std::rc::Rc::new(
                     slint::VecModel::from(Vec::<launcher_ui::ActionItem>::new()),
@@ -795,12 +864,15 @@ fn spawn_context_refresh(
                 if session.is_current(query_id) {
                     if let Some(ui) = ui_weak.upgrade() {
                         // rebuild on the UI thread (ResultItem carries Image)
-                        let items =
-                            launcher_ui::to_result_items(commands.iter().cloned(), 50);
+                        let (items, row_map) =
+                            launcher_ui::to_result_rows_with_query(commands.iter().cloned(), 50, "");
+                        if let Ok(mut st) = state.lock() {
+                            st.row_map = row_map.clone();
+                        }
                         ui.set_results(slint::ModelRc::new(std::rc::Rc::new(
                             slint::VecModel::from(items),
                         )));
-                        ui.set_selected_index(0);
+                        ui.set_selected_index(launcher_ui::row_of_result(&row_map, 0) as i32);
                         ui.set_panel_visible(false);
                     }
                 }
@@ -952,7 +1024,9 @@ impl EditorCommandProvider {
             cmd: Command {
                 id: "open-editor".into(),
                 title: "Open Workflow Editor".into(),
-                subtitle: Some("Edit the workflow draft graph (list surface, undo/redo, export)".into()),
+                subtitle: Some(
+                    "Edit the workflow draft graph (list surface, undo/redo, export)".into(),
+                ),
                 icon: None,
                 provider_id: "editor".into(),
                 score: 0.0,
@@ -1069,7 +1143,10 @@ struct HotkeyBench {
 
 impl HotkeyBench {
     fn record(&self, ready_us: u64) {
-        self.samples_us.lock().expect("bench samples").push(ready_us);
+        self.samples_us
+            .lock()
+            .expect("bench samples")
+            .push(ready_us);
     }
 
     fn write_report(&self, report: &Path, cycles_requested: usize) {
@@ -1205,8 +1282,7 @@ fn register_hotkey(hotkey_str: &str, deps: &HotkeyDeps) {
                         foreground::park(ui.window());
                         deps.visible.store(false, Ordering::SeqCst);
                         #[cfg(windows)]
-                        if let Some(hwnd) =
-                            deps.state.lock().ok().and_then(|st| st.prev_foreground)
+                        if let Some(hwnd) = deps.state.lock().ok().and_then(|st| st.prev_foreground)
                         {
                             foreground::restore_foreground(hwnd);
                         }
@@ -1216,6 +1292,15 @@ fn register_hotkey(hotkey_str: &str, deps: &HotkeyDeps) {
                         let show_started = std::time::Instant::now();
                         let _ = ui.show();
                         deps.visible.store(true, Ordering::SeqCst);
+                        if let Ok(mut st) = deps.state.lock() {
+                            // P3-A: the hotkey summon is Closed -> Launcher
+                            let _ =
+                                st.ui_state
+                                    .open_root(launcher_ui::ui_state::UiState::Launcher(
+                                        launcher_ui::ui_state::LauncherState::Search,
+                                    ));
+                            tracing::debug!(state = ?st.ui_state.current(), "ui.state");
+                        }
                         let dispatch_to_ready_us = dispatch_at.elapsed().as_micros() as u64;
                         tracing::info!(
                             cold,
@@ -1232,7 +1317,7 @@ fn register_hotkey(hotkey_str: &str, deps: &HotkeyDeps) {
                         foreground::recenter_and_repaint(ui.window());
                         win_platform::apply_tool_window(ui.window());
                         apply_ui_scale(&ui); // first show: winit DPI now known
-                        // MUST-2: pick up config edits made since last show
+                                             // MUST-2: pick up config edits made since last show
                         maybe_reload_config(&deps, &ui);
                         // P3.0-F12: re-resolve the palette (system mode may
                         // have flipped since the last show)
@@ -1404,7 +1489,11 @@ fn execute_action_by_id(
         ("settings", Some(path)) => {
             // open the config in the default editor (notepad fallback)
             fn open_with_default_editor(path: &str) -> std::io::Result<()> {
-                if std::process::Command::new("notepad").arg(path).spawn().is_ok() {
+                if std::process::Command::new("notepad")
+                    .arg(path)
+                    .spawn()
+                    .is_ok()
+                {
                     return Ok(());
                 }
                 #[cfg(windows)]
@@ -1445,14 +1534,26 @@ fn execute_action_by_id(
     }
     let resolved = {
         let st = state.lock().expect("state lock");
+        // P3-B: `#<index>` selects an action by its position in the
+        // command's declared action list — a deterministic address for the
+        // (common) unnamed ActionDescriptors, so keyboard paths like
+        // Ctrl+O/Shift+Enter resolve through the SAME execute path without
+        // inventing ids. Explicit ids still win by name.
+        let by_index: Option<usize> = action_id
+            .strip_prefix('#')
+            .and_then(|v| v.parse::<usize>().ok());
         st.current_results
             .iter()
             .find(|c| c.id == command_id)
             .and_then(|c| {
                 c.actions
                     .iter()
-                    .find(|a| a.id.as_deref() == Some(action_id.as_str()))
-                    .cloned()
+                    .enumerate()
+                    .find(|(i, a)| {
+                        a.id.as_deref() == Some(action_id.as_str())
+                            || by_index.map(|idx| idx == *i).unwrap_or(false)
+                    })
+                    .map(|(_, a)| a.clone())
             })
             .map(|mut a| {
                 // system.paste carries its target: the pre-popup foreground the
@@ -1538,12 +1639,15 @@ fn execute_action_by_id(
                 match outcome {
                     Some(result) => {
                         tracing::info!(provider = %provider_id, result = %result, "effect.done");
-                        if let Some(c) =
-                            state.lock().ok().and_then(|st| st.command_for_id(&command_id))
+                        if let Some(c) = state
+                            .lock()
+                            .ok()
+                            .and_then(|st| st.command_for_id(&command_id))
                         {
                             let title = c.title.clone();
                             state.lock().ok().map(|mut st| {
-                                st.core.record_use_with_title(&command_id, &c.provider_id, &title)
+                                st.core
+                                    .record_use_with_title(&command_id, &c.provider_id, &title)
                             });
                         }
                         close_and_restore(ui_weak.clone(), visible.clone(), None);
@@ -1604,7 +1708,9 @@ mod foreground {
             use windows::Win32::Graphics::Gdi::{
                 GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
             };
-            use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+            use windows::Win32::UI::WindowsAndMessaging::{
+                GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
+            };
             // P2-C: place the popup on the monitor that owns the CURSOR
             // (falls back to the primary monitor metrics when enumeration
             // fails), so the launcher appears where the user invoked it.
@@ -1786,9 +1892,9 @@ pub struct SingleInstanceGuard {
 
 #[cfg(windows)]
 fn enforce_single_instance() -> anyhow::Result<Option<SingleInstanceGuard>> {
+    use windows::core::HSTRING;
     use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
     use windows::Win32::System::Threading::CreateMutexW;
-    use windows::core::HSTRING;
     let name = HSTRING::from(r"Local\NativeLauncherSingleInstance");
     let handle = unsafe { CreateMutexW(None, false, &name)? };
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
@@ -1840,7 +1946,10 @@ fn main() -> anyhow::Result<()> {
             if prev.state == "starting" {
                 let failures = prev.consecutive_failures + 1;
                 if failures >= 3 {
-                    warn!(failures, "RECOVERY: repeated failed startups — booting degraded");
+                    warn!(
+                        failures,
+                        "RECOVERY: repeated failed startups — booting degraded"
+                    );
                 }
                 let _ = std::fs::write(
                     &startup_state_path,
@@ -1903,6 +2012,9 @@ fn main() -> anyhow::Result<()> {
         pending_confirmation: None,
         current_results: Vec::new(),
         plugins: plugin_registry,
+        ui_state: launcher_ui::ui_state::UiStateMachine::new(),
+        last_query: String::new(),
+        row_map: Vec::new(),
     }));
     let session = Arc::new(launcher_core::SearchSession::new());
     let visible = Arc::new(AtomicBool::new(false));
@@ -1919,7 +2031,7 @@ fn main() -> anyhow::Result<()> {
         let ui_weak = ui.as_weak();
         move || {
             if let Some(ui) = ui_weak.upgrade() {
-                ui.set_search_hint("Search…  try: agent · workflow · settings · =calc".into());
+                ui.set_search_hint(BASE_SEARCH_HINT.into());
             }
         }
     });
@@ -1954,21 +2066,20 @@ fn main() -> anyhow::Result<()> {
                     #[cfg(windows)]
                     foreground::take_foreground("Launcher");
                     foreground::recenter_and_repaint(ui.window());
-                            win_platform::apply_tool_window(ui.window());
+                    win_platform::apply_tool_window(ui.window());
                     apply_ui_scale(&ui); // first show: winit DPI now known
-                    // P2.2-C: capture the search context ONCE per popup
+                                         // P2.2-C: capture the search context ONCE per popup
                     {
                         let folder = launcher_context::explorer::explorer_folders()
                             .into_iter()
                             .find(|(h, _)| *h == fg_hwnd)
                             .map(|(_, f)| f);
                         state.lock().ok().map(|st| {
-                            st.core.set_search_context(Some(
-                                launcher_search::ContextSnapshot {
+                            st.core
+                                .set_search_context(Some(launcher_search::ContextSnapshot {
                                     foreground_app: fg_app.clone(),
                                     current_folder: folder,
-                                },
-                            ));
+                                }));
                         });
                     }
                     ui.invoke_focus_input(); // keyboard focus lands in the search input
@@ -2052,11 +2163,20 @@ fn main() -> anyhow::Result<()> {
             .ok();
     }
 
-    // P3.1-B0: tray entry → standalone management window
+    // P3.1-B0: tray entry → standalone management window (plugins tab)
     tray.on_management_requested({
         let state = state.clone();
         move || {
-            management::open(state.clone());
+            // P3-H: one hop to the Plugins page (spec §15)
+            management::open_tab(state.clone(), Some(1));
+        }
+    });
+
+    // P3-H: tray settings entry → management window, general/settings tab
+    tray.on_settings_requested({
+        let state = state.clone();
+        move || {
+            management::open_tab(state.clone(), Some(0));
         }
     });
 
@@ -2098,11 +2218,7 @@ fn main() -> anyhow::Result<()> {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(200);
-        (
-            Arc::new(HotkeyBench::default()),
-            PathBuf::from(p),
-            cycles,
-        )
+        (Arc::new(HotkeyBench::default()), PathBuf::from(p), cycles)
     });
     let hotkey_deps = HotkeyDeps {
         ui_weak: ui_weak.clone(),
@@ -2210,6 +2326,9 @@ fn main() -> anyhow::Result<()> {
                     // UI-CONTRACT section 8.2: changing the selection cancels
                     // a pending confirmation - it never carries across commands
                     st.pending_confirmation = None;
+                    // P3-F: keep the scope's selected_result current
+                    let (q, sel) = (st.last_query.clone(), st.selected_result_id());
+                    st.ui_state.set_plugin_context(&q, &sel);
                 }
                 // P3.2-B1: project rich-result lines for the detail pane
                 {
@@ -2221,7 +2340,10 @@ fn main() -> anyhow::Result<()> {
                         if let Some(ui) = ui2.upgrade() {
                             ui.set_detail_lines(slint::ModelRc::new(std::rc::Rc::new(
                                 slint::VecModel::from(
-                                    lines.into_iter().map(slint::SharedString::from).collect::<Vec<_>>(),
+                                    lines
+                                        .into_iter()
+                                        .map(slint::SharedString::from)
+                                        .collect::<Vec<_>>(),
                                 ),
                             )));
                         }
@@ -2234,6 +2356,20 @@ fn main() -> anyhow::Result<()> {
             let state = state.clone();
             let ui_weak = ui_weak.clone();
             move || {
+                // P3-A: -> Actions enters the ActionPanel overlay state
+                if let Ok(mut st) = state.lock() {
+                    let command_id = st
+                        .current_results
+                        .get(st.selected)
+                        .map(|c| c.id.clone())
+                        .unwrap_or_default();
+                    let _ = st
+                        .ui_state
+                        .enter_overlay(launcher_ui::ui_state::UiState::Launcher(
+                            launcher_ui::ui_state::LauncherState::ActionPanel { command_id },
+                        ));
+                    tracing::debug!(state = ?st.ui_state.current(), "ui.state");
+                }
                 sync_action_panel(&state, &ui_weak);
                 // panel mode replaces the search box: move Slint item focus
                 // to the root FocusScope so capture-phase keys keep firing
@@ -2303,6 +2439,236 @@ fn main() -> anyhow::Result<()> {
                 tool_ui_host::close_session(cb_close.clone());
             });
         }
+        // P3-I: keyboard traversal resolved in RESULT space (headers are
+        // never candidates — group_sections/result_nav guarantee it); the
+        // returned ROW index drives the display selection.
+        ui.on_nav_requested({
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            move |delta| {
+                let delta = delta as i32;
+                let (result_idx, row_idx, command_id) = {
+                    let mut st = state.lock().expect("state lock");
+                    let (next, row) = launcher_ui::result_nav(
+                        &st.row_map,
+                        st.current_results.len(),
+                        st.selected,
+                        delta,
+                    );
+                    st.selected = next;
+                    let id = st.selected_result_id();
+                    (next, row, id)
+                };
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_selected_index(row_idx as i32);
+                    if !command_id.is_empty() {
+                        ui.invoke_selection_changed(slint::SharedString::from(command_id));
+                    }
+                }
+                let _ = result_idx;
+            }
+        });
+        ui.on_nav_home({
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            move || {
+                let (row_idx, command_id) = {
+                    let st = state.lock().expect("state lock");
+                    let row = launcher_ui::row_of_result(&st.row_map, 0);
+                    (row, st.selected_result_id())
+                };
+                {
+                    let mut st = state.lock().expect("state lock");
+                    st.selected = 0;
+                }
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_selected_index(row_idx as i32);
+                    if !command_id.is_empty() {
+                        ui.invoke_selection_changed(slint::SharedString::from(command_id));
+                    }
+                }
+            }
+        });
+        ui.on_nav_end({
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            move || {
+                let (result_idx, row_idx, command_id) = {
+                    let mut st = state.lock().expect("state lock");
+                    let last = st.current_results.len().saturating_sub(1);
+                    let row = launcher_ui::row_of_result(&st.row_map, last);
+                    st.selected = last;
+                    let id = st.selected_result_id();
+                    (last, row, id)
+                };
+                let _ = result_idx;
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_selected_index(row_idx as i32);
+                    if !command_id.is_empty() {
+                        ui.invoke_selection_changed(slint::SharedString::from(command_id));
+                    }
+                }
+            }
+        });
+
+        // P3-F: enter the selected plugin's QUERY SCOPE. The scope lives
+        // INSIDE this shell (same window, same result list, same action
+        // model); the UI passes only the plugin_id down to
+        // Core::search_plugin_scoped → PluginProvider → PluginHost —
+        // PluginLifetime never reaches this layer (ADR-0019 boundary).
+        ui.on_plugin_context_requested({
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            let session = session.clone();
+            move || {
+                let state = state.clone();
+                let ui_weak = ui_weak.clone();
+                let session = session.clone();
+                let (plugin_id, parent_query) = {
+                    let st = state.lock().expect("state lock");
+                    let Some(cmd) = st.current_results.get(st.selected) else {
+                        return;
+                    };
+                    // only plugin-sourced results define a scope
+                    let Some(plugin_id) = cmd.provider_id.strip_prefix("plugin:") else {
+                        return;
+                    };
+                    (plugin_id.to_string(), st.last_query.clone())
+                };
+                if let Ok(mut st) = state.lock() {
+                    let _ =
+                        st.ui_state
+                            .enter_overlay(launcher_ui::ui_state::UiState::PluginContext {
+                                plugin_id: plugin_id.clone(),
+                                parent_query: parent_query.clone(),
+                                query: String::new(),
+                                selected_result: String::new(),
+                            });
+                    tracing::info!(state = ?st.ui_state.current(), "ui.state");
+                }
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_in_plugin_context(true);
+                    ui.set_search_hint(slint::SharedString::from(format!("Search {plugin_id}…")));
+                    ui.set_context_hint(slint::SharedString::from(format!(
+                        "← {plugin_id} · Esc 返回"
+                    )));
+                    ui.invoke_reset_query();
+                    ui.invoke_focus_input();
+                }
+                // scoped discovery: the plugin's own catalog
+                let limit = launcher_core::MAX_RESULTS;
+                spawn_search(state, session, ui_weak, String::new(), limit);
+            }
+        });
+
+        // P3-F §10.1: Esc leaves the scope and returns to LauncherSearch
+        // with the parent query restored — never quits the launcher.
+        ui.on_plugin_context_exited({
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            let session = session.clone();
+            move || {
+                let state = state.clone();
+                let ui_weak = ui_weak.clone();
+                let session = session.clone();
+                let parent_query = {
+                    let mut st = state.lock().expect("state lock");
+                    let parent = match st.ui_state.current() {
+                        launcher_ui::ui_state::UiState::PluginContext { parent_query, .. } => {
+                            parent_query.clone()
+                        }
+                        _ => String::new(),
+                    };
+                    st.ui_state.escape();
+                    tracing::info!(state = ?st.ui_state.current(), "ui.state");
+                    parent
+                };
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_in_plugin_context(false);
+                    ui.set_search_hint(BASE_SEARCH_HINT.into());
+                    ui.set_context_hint(slint::SharedString::from(""));
+                    ui.invoke_set_query(slint::SharedString::from(parent_query.clone()));
+                    ui.invoke_focus_input();
+                }
+                let limit = launcher_core::MAX_RESULTS;
+                spawn_search_or_recent(state, session, ui_weak, parent_query, limit);
+            }
+        });
+
+        // P3-B §13: Shift+Enter = alternate execution — the SECOND enabled
+        // action of the selected command, resolved Rust-side from its
+        // ActionDescriptors and executed via the SAME execute path as the
+        // action panel (no UI-private execution).
+        ui.on_secondary_action_requested({
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            let visible = visible.clone();
+            move || {
+                let target = {
+                    let st = state.lock().expect("state lock");
+                    st.current_results.get(st.selected).and_then(|c| {
+                        let enabled: Vec<(usize, &launcher_domain::Action)> = c
+                            .actions
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, a)| a.disabled_reason.is_none())
+                            .collect();
+                        enabled.get(1).map(|(i, a)| {
+                            let sel = a.id.clone().unwrap_or_else(|| format!("#{i}"));
+                            (c.id.clone(), sel)
+                        })
+                    })
+                };
+                if let Some((command_id, action_id)) = target {
+                    execute_action_by_id(
+                        state.clone(),
+                        ui_weak.clone(),
+                        visible.clone(),
+                        command_id,
+                        action_id,
+                        false,
+                    );
+                }
+            }
+        });
+
+        // P3-B §13: Ctrl+O = open containing location — the selected
+        // command's first enabled `Reveal` action. Same descriptor, same
+        // execute path; a command without Reveal simply no-ops.
+        ui.on_open_location_requested({
+            let state = state.clone();
+            let ui_weak = ui_weak.clone();
+            let visible = visible.clone();
+            move || {
+                let target = {
+                    let st = state.lock().expect("state lock");
+                    st.current_results.get(st.selected).and_then(|c| {
+                        c.actions
+                            .iter()
+                            .enumerate()
+                            .find(|(_, a)| {
+                                a.disabled_reason.is_none()
+                                    && a.kind == launcher_domain::ActionKind::Reveal
+                            })
+                            .map(|(i, a)| {
+                                let sel = a.id.clone().unwrap_or_else(|| format!("#{i}"));
+                                (c.id.clone(), sel)
+                            })
+                    })
+                };
+                if let Some((command_id, action_id)) = target {
+                    execute_action_by_id(
+                        state.clone(),
+                        ui_weak.clone(),
+                        visible.clone(),
+                        command_id,
+                        action_id,
+                        false,
+                    );
+                }
+            }
+        });
+
         // Esc in the panel = Cancel: a pending confirmation is never
         // persisted (UI-CONTRACT §12 / INV-048)
         ui.on_panel_closed({
@@ -2311,6 +2677,9 @@ fn main() -> anyhow::Result<()> {
             move || {
                 if let Ok(mut st) = state.lock() {
                     st.pending_confirmation = None;
+                    // P3-A: Esc in the panel returns to LauncherSearch
+                    st.ui_state.escape();
+                    tracing::debug!(state = ?st.ui_state.current(), "ui.state");
                 }
                 if let Some(ui) = ui_weak.upgrade() {
                     ui.invoke_focus_input();
@@ -2407,6 +2776,9 @@ fn main() -> anyhow::Result<()> {
             move || {
                 if let Ok(mut st) = state.lock() {
                     st.pending_confirmation = None;
+                    // P3-A: the popup leaving the screen is Closed, always
+                    st.ui_state.reset_to_closed();
+                    tracing::debug!(state = ?st.ui_state.current(), "ui.state");
                 }
                 if let Some(ui) = ui_weak.upgrade() {
                     foreground::park(ui.window());
@@ -2420,7 +2792,6 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-
     // P2.2-E: all core services initialized — mark this startup healthy
     {
         let healthy = serde_json::json!({
@@ -2429,7 +2800,10 @@ fn main() -> anyhow::Result<()> {
             "version": env!("CARGO_PKG_VERSION"),
         });
         let _ = std::fs::write(&startup_state_path, healthy.to_string());
-        info!(version = env!("CARGO_PKG_VERSION"), "startup healthy marker written");
+        info!(
+            version = env!("CARGO_PKG_VERSION"),
+            "startup healthy marker written"
+        );
     }
 
     tray.show()?;

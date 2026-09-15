@@ -30,7 +30,9 @@ export { Theme }
 
 
 // Tray icon: keeps the Slint event loop alive while the popup is hidden and
-// offers left-click summon + quit menu (ported from demo1).
+// offers left-click summon + menu (ported from demo1).
+// P3-H (spec §15): the tray is a product entry — Open / Plugins / Settings
+// are each ONE hop; Exit ends the app.
 export component TrayIcon inherits SystemTrayIcon {
     icon: @image-url("tray.png");
     tooltip: "Native Launcher";
@@ -38,23 +40,25 @@ export component TrayIcon inherits SystemTrayIcon {
     callback show-requested();
     callback quit-requested();
     callback workflow-demo-requested();
-    // P3.1-B0: open the standalone management window
+    // P3.1-B0: open the standalone management window (plugins tab)
     callback management-requested();
+    // P3-H: settings one-hop entry (management window, general tab)
+    callback settings-requested();
 
     clicked => { root.show-requested(); }
 
     Menu {
         MenuItem {
-            title: "显示启动器";
+            title: "打开启动器";
             activated => { root.show-requested(); }
         }
         MenuItem {
-            title: "打开管理窗口";
+            title: "插件管理";
             activated => { root.management-requested(); }
         }
         MenuItem {
-            title: "运行示例工作流";
-            activated => { root.workflow-demo-requested(); }
+            title: "设置";
+            activated => { root.settings-requested(); }
         }
         MenuItem {
             title: "退出";
@@ -91,6 +95,9 @@ export component AppWindow inherits Window {
     property <bool> in-editor: root.editor-visible;
     property <bool> in-tool: root.tool-visible;
     property <bool> in-main: !root.in-action && !root.in-workflow && !root.in-editor && !root.in-tool;
+    // P3-F: PluginContext = a launcher QUERY SCOPE (same shell, scoped
+    // results, Esc back) — never a plugin-owned window or second UI.
+    in-out property <bool> in-plugin-context: false;
     property <bool> has-query: search.text != "";
     property <bool> show-results: root.in-main && root.has-query;
 
@@ -176,6 +183,18 @@ export component AppWindow inherits Window {
     callback query-changed(string);
     callback execute(string);
     callback selection-changed(string);
+    // P3-F: enter/exit the plugin query scope (Ctrl+Enter on a plugin
+    // result enters; Esc leaves back to LauncherSearch)
+    callback plugin-context-requested();
+    callback plugin-context-exited();
+    // P3-B keyboard contract (spec §13): every key maps to an EXISTING
+    // action/navigation semantic — never a new execution path.
+    callback secondary-action-requested();   // Shift+Enter: 2nd enabled action
+    callback open-location-requested();      // Ctrl+O: Reveal action if any
+    // P3-I: result-space traversal (headers skipped Rust-side)
+    callback nav-requested(int);
+    callback nav-home();
+    callback nav-end();
     callback panel-toggled();
     callback panel-closed();
     callback panel-nav(int);
@@ -238,6 +257,18 @@ export component AppWindow inherits Window {
                     root.dismissed();
                 }
                 accept
+            } else if (event.text == Key.F1 && root.in-main
+                       && root.results.length > 0) {
+                root.detail-visible = !root.detail-visible;
+                accept
+            } else if (event.text == Key.Home && root.in-main
+                       && root.results.length > 0) {
+                root.nav-home();
+                accept
+            } else if (event.text == Key.End && root.in-main
+                       && root.results.length > 0) {
+                root.nav-end();
+                accept
             } else if (event.modifiers.control && event.text == "d") {
                 // P2.2-A: toggle favorite on the selected result (Ctrl+D is
                 // only taken by workflow diagnostics while wf-visible)
@@ -263,17 +294,16 @@ export component AppWindow inherits Window {
             } else if (event.text == Key.DownArrow) {
                 if (root.panel-visible) {
                     root.panel-nav(1);
-                } else if (root.selected-index + 1 < root.results.length) {
-                    root.selected-index += 1;
-                    root.selection-changed(root.results[root.selected-index].command-id);
+                } else if (root.results.length > 0) {
+                    // P3-I: Rust resolves the next RESULT (headers skipped)
+                    root.nav-requested(1);
                 }
                 accept
             } else if (event.text == Key.UpArrow) {
                 if (root.panel-visible) {
                     root.panel-nav(-1);
-                } else if (root.selected-index > 0) {
-                    root.selected-index -= 1;
-                    root.selection-changed(root.results[root.selected-index].command-id);
+                } else if (root.results.length > 0) {
+                    root.nav-requested(-1);
                 }
                 accept
             } else if (event.modifiers.control && event.text == Key.DownArrow) {
@@ -305,7 +335,12 @@ export component AppWindow inherits Window {
             // main-mode navigation, intercepted inside the LineEdit BEFORE
             // its cursor handling (SearchBox.key-pressed contract)
             key-pressed(event) => {
-                if (event.text == Key.Escape) {
+                if (event.text == Key.Escape && root.in-plugin-context) {
+                    // P3-F §10.1: Esc in a plugin scope returns to
+                    // LauncherSearch — it never quits the launcher
+                    root.plugin-context-exited();
+                    accept
+                } else if (event.text == Key.Escape) {
                     root.dismissed();
                     accept
                 } else if (event.text == Key.DownArrow && event.modifiers.control) {
@@ -315,16 +350,46 @@ export component AppWindow inherits Window {
                         root.panel-toggled();
                     }
                     accept
+                } else if (event.modifiers.control && event.text == Key.Return
+                           && root.in-main && root.results.length > 0) {
+                    // P3-F: enter the selected plugin's query scope (Rust
+                    // validates the result is plugin-sourced; no-op else)
+                    root.plugin-context-requested();
+                    accept
+                } else if (event.modifiers.shift && event.text == Key.Return
+                           && root.in-main && root.results.length > 0) {
+                    // P3-B §13: Shift+Enter = alternate execution (2nd
+                    // enabled action; resolved Rust-side, same execute path)
+                    root.secondary-action-requested();
+                    accept
+                } else if (event.modifiers.control && event.text == "o"
+                           && root.in-main && root.results.length > 0) {
+                    // P3-B §13: Ctrl+O = open containing location (Reveal
+                    // action of the selected command; no-op when absent)
+                    root.open-location-requested();
+                    accept
+                } else if (event.text == Key.Home && root.in-main
+                           && root.results.length > 0) {
+                    // P3-I: traversal is resolved Rust-side in RESULT space
+                    root.nav-home();
+                    accept
+                } else if (event.text == Key.End && root.in-main
+                           && root.results.length > 0) {
+                    root.nav-end();
+                    accept
+                } else if (event.text == Key.F1 && root.in-main
+                           && root.results.length > 0) {
+                    // P3-B §13: F1 = Preview (same pane Tab toggles)
+                    root.detail-visible = !root.detail-visible;
+                    accept
                 } else if (event.text == Key.DownArrow) {
-                    if (root.selected-index + 1 < root.results.length) {
-                        root.selected-index += 1;
-                        root.selection-changed(root.results[root.selected-index].command-id);
+                    if (root.results.length > 0) {
+                        root.nav-requested(1);
                     }
                     accept
                 } else if (event.text == Key.UpArrow) {
-                    if (root.selected-index > 0) {
-                        root.selected-index -= 1;
-                        root.selection-changed(root.results[root.selected-index].command-id);
+                    if (root.results.length > 0) {
+                        root.nav-requested(-1);
                     }
                     accept
                 } else {
@@ -357,6 +422,15 @@ export component AppWindow inherits Window {
             visible-rows: root.visible-rows;
             show-empty: root.has-query;
             selection-changed(id) => { root.selection-changed(id); }
+            // P3-E (spec §12): right click = context surface. Reuses the
+            // ActionPanel (same action ids, same execute-action path, same
+            // Esc-to-close) — a second menu UI would duplicate behavior.
+            context-menu(id) => {
+                root.selection-changed(id);
+                root.panel-selected = 0;
+                root.panel-visible = true;
+                root.panel-toggled();
+            }
             execute(id) => { root.execute(id); }
         }
     }

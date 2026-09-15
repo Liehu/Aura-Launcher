@@ -15,8 +15,8 @@ use std::time::Instant;
 use launcher_domain::{
     Action, ActionKind, ActionPayload, Category, Command, ContextSnapshot, QueryContext,
 };
-use launcher_mcp::compat::McpProtocolProfile;
 use launcher_indexer::{IndexedFile, Indexer};
+use launcher_mcp::compat::McpProtocolProfile;
 use launcher_search::rank_with_boost;
 
 pub use providers::app::AppProvider;
@@ -160,7 +160,10 @@ impl Core {
             application_generation: std::sync::atomic::AtomicU64::new(0),
             ranking_generation: std::sync::atomic::AtomicU64::new(0),
             last_context_state: Mutex::new(None),
-            search_cache: Mutex::new(launcher_search::cache::SearchCache::new(256, 16 * 1024 * 1024)),
+            search_cache: Mutex::new(launcher_search::cache::SearchCache::new(
+                256,
+                16 * 1024 * 1024,
+            )),
             search_context: Mutex::new(None),
             context_generation: std::sync::atomic::AtomicU64::new(0),
             mcp_servers: std::collections::HashMap::new(),
@@ -211,7 +214,9 @@ impl Core {
     /// Deterministic usage boost for one command (P2-D): frequency
     /// (capped) + recency. Max ≈ 42 — enough to reorder within a match
     /// class (contains vs prefix), never enough to beat an exact match.
-    fn usage_boost(usage: &std::collections::HashMap<(String, String), (u32, i64)>) -> impl Fn(&Command) -> f32 + '_ {
+    fn usage_boost(
+        usage: &std::collections::HashMap<(String, String), (u32, i64)>,
+    ) -> impl Fn(&Command) -> f32 + '_ {
         use launcher_search::RankingWeights;
         let w = RankingWeights::default();
         let now = std::time::SystemTime::now()
@@ -302,7 +307,8 @@ impl Core {
     }
 
     pub fn context_generation(&self) -> u64 {
-        self.context_generation.load(std::sync::atomic::Ordering::SeqCst)
+        self.context_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// P2.2-F: application-visible lifecycle changes (plugin enable/disable/
@@ -493,6 +499,54 @@ impl Core {
             .collect()
     }
 
+    /// P3-F: plugin-scoped query (PluginContext). Fans the query out to
+    /// EXACTLY ONE plugin provider — the PluginContext is a launcher query
+    /// scope, so cross-source ranking competition is deliberately bypassed:
+    /// the plugin's own results are presented in its declared order
+    /// (stable-sorted by the provider's bounded score hint for
+    /// determinism). The UI knows only the plugin_id; process lifetime
+    /// policy stays inside PluginProvider/PluginHost (ADR-0019 boundary).
+    pub fn search_plugin_scoped(
+        &mut self,
+        plugin_id: &str,
+        raw_query: &str,
+        limit: usize,
+    ) -> SearchResult {
+        let started = Instant::now();
+        // E11 length cap, same envelope as the global search
+        let truncated: String = raw_query.chars().take(512).collect();
+        let q = QueryContext::parse(&truncated);
+        let mut commands: Vec<Command> = Vec::new();
+        let mut errors: Vec<String> = Vec::new();
+        let mut hit = false;
+        for p in self.providers.iter_mut() {
+            if p.plugin_identity() != Some(plugin_id) {
+                continue;
+            }
+            hit = true;
+            commands.extend(p.query(&q));
+            if let Some(e) = p.take_last_error() {
+                errors.push(format!("{}: {}", p.id(), e));
+            }
+            break; // provider identity is unique (INV-029)
+        }
+        if !hit {
+            errors.push(format!("unknown plugin: {plugin_id}"));
+        }
+        commands.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        commands.truncate(limit.min(MAX_RESULTS));
+        SearchResult {
+            commands,
+            elapsed: started.elapsed(),
+            errors,
+        }
+    }
+
     /// Route a validated `plugin.*` action to its broker (MVP4.0). The
     /// plugin is addressed by its host-assigned manifest id (INV-029):
     /// producers can never address or impersonate another provider.
@@ -539,7 +593,11 @@ impl Core {
     ) {
         self.mcp_servers.insert(
             id.to_string(),
-            launcher_mcp::executor::ServerEndpoint::http(url, allow_private_network, allow_plain_http),
+            launcher_mcp::executor::ServerEndpoint::http(
+                url,
+                allow_private_network,
+                allow_plain_http,
+            ),
         );
     }
 
@@ -569,7 +627,10 @@ impl Core {
 
     /// Executor override (tests). Production routing builds a
     /// `StdMcpExecutor` from `mcp_servers` on first use.
-    pub fn set_mcp_executor(&mut self, ex: std::sync::Arc<dyn launcher_mcp::executor::McpExecutor>) {
+    pub fn set_mcp_executor(
+        &mut self,
+        ex: std::sync::Arc<dyn launcher_mcp::executor::McpExecutor>,
+    ) {
         self.mcp_executor = Some(ex);
     }
 
@@ -599,10 +660,12 @@ impl Core {
                 .iter()
                 .map(|(id, endpoint)| (id.clone(), endpoint.clone()))
                 .collect();
-        Some(std::sync::Arc::new(launcher_mcp::executor::StdMcpExecutor::new(
-            servers,
-            std::time::Duration::from_millis(5000),
-        )))
+        Some(std::sync::Arc::new(
+            launcher_mcp::executor::StdMcpExecutor::new(
+                servers,
+                std::time::Duration::from_millis(5000),
+            ),
+        ))
     }
 
     /// Execute one approved MCP invocation through the registry's McpExecutor.
@@ -614,9 +677,8 @@ impl Core {
         execution_id: &str,
     ) -> Result<serde_json::Value, (launcher_domain::workflow::WorkflowFailureClass, String)> {
         use launcher_domain::workflow::WorkflowFailureClass as Class;
-        let parsed = launcher_mcp::executor::McpInvokeInput::from_json(input).map_err(|e| {
-            (e.failure_class(), e.to_string())
-        })?;
+        let parsed = launcher_mcp::executor::McpInvokeInput::from_json(input)
+            .map_err(|e| (e.failure_class(), e.to_string()))?;
         if !self.mcp_servers.contains_key(parsed.server_id.as_str()) {
             return Err((
                 Class::PluginUnavailable,
@@ -624,7 +686,10 @@ impl Core {
             ));
         }
         let ex = self.mcp_executor().ok_or_else(|| {
-            (Class::PluginUnavailable, "no mcp executor configured".to_string())
+            (
+                Class::PluginUnavailable,
+                "no mcp executor configured".to_string(),
+            )
         })?;
         let result = ex
             .execute(&parsed, execution_id)
@@ -739,7 +804,6 @@ fn format_modified(ms: i64) -> String {
     let (hh, mm, ss) = (sec_of_day / 3600, (sec_of_day % 3600) / 60, sec_of_day % 60);
     format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
 }
-
 
 #[cfg(test)]
 mod p30_meta_tests {
@@ -908,6 +972,89 @@ mod tests {
         }
     }
 
+    /// Provider carrying a plugin identity (what PluginProvider does).
+    struct IdentifiedProvider {
+        id: String,
+        plugin_id: String,
+        cmds: Vec<Command>,
+    }
+
+    impl Provider for IdentifiedProvider {
+        fn id(&self) -> &str {
+            &self.id
+        }
+        fn query(&mut self, _q: &QueryContext) -> Vec<Command> {
+            self.cmds.clone()
+        }
+        fn plugin_identity(&self) -> Option<&str> {
+            Some(&self.plugin_id)
+        }
+    }
+
+    fn plugin_cmd(plugin_id: &str, title: &str, score: f32) -> Command {
+        Command {
+            id: format!("{plugin_id}:{title}"),
+            title: title.into(),
+            subtitle: None,
+            icon: None,
+            provider_id: format!("plugin:{plugin_id}"),
+            score,
+            keywords: vec![],
+            category: Category::Plugin,
+            actions: vec![Action {
+                kind: ActionKind::Open,
+                payload: None,
+                id: None,
+                title: None,
+                disabled_reason: None,
+                shortcut: None,
+                confirmation_required: false,
+            }],
+            target: None,
+        }
+    }
+
+    /// P3-F contract gate: query isolation — a scoped query reaches ONLY
+    /// the addressed plugin provider; other sources contribute nothing.
+    #[test]
+    fn search_plugin_scoped_isolates_one_provider() {
+        let mut core = Core::new();
+        core.register(Box::new(StaticProvider {
+            id: "apps".into(),
+            cmds: vec![app("1", "Visual Studio Code")],
+        }));
+        core.register(Box::new(IdentifiedProvider {
+            id: "plugin".into(),
+            plugin_id: "github".into(),
+            cmds: vec![plugin_cmd("github", "Repositories", 0.5)],
+        }));
+        core.register(Box::new(IdentifiedProvider {
+            id: "plugin".into(),
+            plugin_id: "calc".into(),
+            cmds: vec![plugin_cmd("calc", "Calc Result", 0.9)],
+        }));
+
+        let r = core.search_plugin_scoped("github", "repo", 50);
+        assert_eq!(r.commands.len(), 1, "only the scoped plugin's results");
+        assert_eq!(r.commands[0].provider_id, "plugin:github");
+        assert!(r.errors.is_empty());
+
+        // deterministic ordering by the plugin's own score hint
+        let mut core2 = Core::new();
+        core2.register(Box::new(IdentifiedProvider {
+            id: "plugin".into(),
+            plugin_id: "x".into(),
+            cmds: vec![plugin_cmd("x", "low", 0.1), plugin_cmd("x", "high", 0.8)],
+        }));
+        let r2 = core2.search_plugin_scoped("x", "", 50);
+        assert_eq!(r2.commands[0].title, "high");
+
+        // unknown plugin: empty result + explicit error (never global search)
+        let r3 = core.search_plugin_scoped("nope", "anything", 50);
+        assert!(r3.commands.is_empty());
+        assert!(r3.errors.iter().any(|e| e.contains("unknown plugin")));
+    }
+
     fn app(id: &str, title: &str) -> Command {
         Command {
             id: id.into(),
@@ -1053,7 +1200,9 @@ mod recent_tests {
     #[test]
     fn recent_commands_empty_without_history() {
         let mut core = Core::new();
-        core.register(Box::new(StaticProvider { cmds: vec![cmd("x", "X")] }));
+        core.register(Box::new(StaticProvider {
+            cmds: vec![cmd("x", "X")],
+        }));
         assert!(core.recent_commands(10).is_empty());
     }
 }
@@ -1120,7 +1269,7 @@ mod p22f_tests {
             current_folder: Some(r"D:\Archive".into()),
         }));
         core.search("readme", 10); // semantic change → miss → re-query
-        // identical recapture → same generation → cache hit again
+                                   // identical recapture → same generation → cache hit again
         core.set_search_context(Some(launcher_search::ContextSnapshot {
             foreground_app: None,
             current_folder: Some(r"D:\Archive".into()),

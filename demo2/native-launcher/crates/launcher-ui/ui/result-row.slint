@@ -23,12 +23,51 @@ export struct ResultItem {
     title-before: string,
     title-match: string,
     title-after: string,
+    // P3-I: section headers ride the SAME display model as result rows but
+    // are a DIFFERENT component (never a disabled row). Header rows carry
+    // command-id == "".
+    is-header: bool,
+    header-label: string,
+}
+
+// P3-I (spec §8): a SectionHeader is its own component — small-caps label
+// over a hairline. NOT focusable, NOT clickable, NOT a disabled ResultRow:
+// cursor, mouse, accessibility tree and automation all see it as
+// structure, never as a candidate.
+export component SectionHeader inherits Rectangle {
+    in property <string> label;
+    height: Theme.row-main; // uniform slot keeps content-height math stable (v1)
+    background: transparent;
+    VerticalLayout {
+        alignment: center;
+        spacing: 0px;
+        Text {
+            text: root.label;
+            color: Theme.text-tertiary;
+            font-size: Theme.type-caption;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+        Rectangle {
+            height: 1px;
+            background: Theme.border-subtle;
+        }
+    }
 }
 
 export component ResultRow inherits Rectangle {
     in property <ResultItem> item;
+    // P3-I state separation (a11y contract): SELECTED = current semantic
+    // selection (pill); FOCUSED = keyboard navigation focus (focus ring) —
+    // intentionally NOT the same visual as selected; HOVER/PRESSED = pointer
+    // feedback. Future input models can set them independently.
     in property <bool> selected;
+    in property <bool> keyboard-focused: false;
     callback execute();
+    // P3-E (spec §12/§14): right click opens the context surface. It is the
+    // SAME unified action model as the -> panel (never a second behavior
+    // path): the parent selects this row and opens the ActionPanel.
+    callback context-requested();
 
     height: Theme.row-main;
     background: transparent;
@@ -39,8 +78,15 @@ export component ResultRow inherits Rectangle {
         y: 3px;
         width: parent.width - Theme.space-1 * 2;
         height: parent.height - 6px;
-        background: root.selected ? Theme.bg-selected : transparent;
+        background:
+            root.selected
+                ? (ta.has-hover ? Theme.bg-selected-hover : Theme.bg-selected)
+                : (ta.has-hover ? Theme.bg-hover-row : transparent);
+        // keyboard focus = FOCUS RING, never a second blue background
+        border-width: root.keyboard-focused ? 1px : 0px;
+        border-color: Theme.border-focus;
         border-radius: Theme.radius-medium;
+        opacity: ta.pressed ? 0.85 : 1.0;
         animate background { duration: Theme.anim-ms * 2ms / 3; }
 
         HorizontalLayout {
@@ -121,7 +167,12 @@ export component ResultRow inherits Rectangle {
         opacity: 0.6;
     }
 
-    TouchArea {
+    ta := TouchArea {
         clicked => { root.execute(); }
+        pointer-event(e) => {
+            if (e.button == PointerEventButton.right) {
+                root.context-requested();
+            }
+        }
     }
 }

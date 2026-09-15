@@ -7,6 +7,7 @@ slint::include_modules!();
 
 use launcher_domain::StepRunStatus;
 
+pub mod ui_state;
 pub mod viewmodel;
 
 /// Convert a domain command list into UI result items (bounded by `limit`).
@@ -72,6 +73,8 @@ pub fn to_result_items_with_query(
                 icon: c.icon.unwrap_or_default().into(),
                 score: format!("{:.2}", c.score).into(),
                 icon_data: Default::default(),
+                is_header: false,
+                header_label: "".into(),
             }
         })
         .collect()
@@ -89,6 +92,187 @@ pub struct ActionPresentation {
     /// First Ready action in declaration order (primary = Enter target).
     /// Computed here so the UI never derives it positionally (review 29 §9).
     pub is_primary: bool,
+}
+
+// ---- P3-D: Result Grouping + focus model (spec §8) -------------------------
+
+/// Group header labels in their FIXED presentation order (spec §8:
+/// Applications → Commands → Files → Folders → Plugins → Web → Other; Web
+/// has no Category equivalent in v1, so such results land in Other).
+pub const RESULT_GROUP_ORDER: [&str; 6] = [
+    "Applications",
+    "Commands",
+    "Files",
+    "Folders",
+    "Plugins",
+    "Other",
+];
+
+fn group_label(c: &launcher_domain::Command) -> &'static str {
+    match c.category {
+        launcher_domain::Category::Application => "Applications",
+        launcher_domain::Category::Command => "Commands",
+        launcher_domain::Category::File => "Files",
+        launcher_domain::Category::Folder => "Folders",
+        launcher_domain::Category::Plugin => "Plugins",
+    }
+}
+
+/// One contiguous, non-empty result section. FOCUS MODEL CONTRACT (P3-D):
+/// sections are a *presentation* projection over the flat, ranked result
+/// list — the keyboard cursor indexes RESULTS ONLY. Headers derived from
+/// these sections are `focusable = false`; traversal A1→A2→B1→B2 is
+/// guaranteed by construction because `start/len` never interleave.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultSection {
+    pub label: &'static str,
+    /// Index of the first result in the flat ranked list.
+    pub start: usize,
+    /// Number of results (>= 1; empty groups are never emitted).
+    pub len: usize,
+}
+
+impl ResultSection {
+    pub fn end(&self) -> usize {
+        self.start + self.len
+    }
+}
+
+/// Project a ranked result list into contiguous group sections (spec §8):
+/// runs are cut IN RANKED ORDER (grouping must never re-order results —
+/// P3-D reject condition), empty groups never appear, and when all results
+/// fall in a SINGLE group the header is suppressed (empty vec — "只有一
+/// 个 group 时可隐藏 header"). The flat cursor space is unchanged.
+pub fn group_sections(commands: &[launcher_domain::Command]) -> Vec<ResultSection> {
+    let mut sections: Vec<ResultSection> = Vec::new();
+    let mut i = 0;
+    while i < commands.len() {
+        let label = group_label(&commands[i]);
+        let start = i;
+        while i < commands.len() && group_label(&commands[i]) == label {
+            i += 1;
+        }
+        sections.push(ResultSection {
+            label,
+            start,
+            len: i - start,
+        });
+    }
+    if sections.len() <= 1 {
+        return Vec::new();
+    }
+    sections
+}
+
+/// Keyboard traversal contract core (P3-D test target): the cursor only
+/// moves within [0, len) of the RESULT space — headers are never in that
+/// space, so `cursor_step` needs no header-awareness by construction.
+pub fn cursor_step(len: usize, current: usize, delta: i32) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let cur = current as i32 + delta;
+    cur.clamp(0, len as i32 - 1) as usize
+}
+
+/// P3-I: build the interleaved DISPLAY model (headers + result rows) from
+/// a ranked command list, with match highlighting. Returns the slint rows
+/// and the row→result map used by navigation.
+pub fn to_result_rows_with_query(
+    items: impl IntoIterator<Item = launcher_domain::Command>,
+    limit: usize,
+    query: &str,
+) -> (Vec<ResultItem>, Vec<Option<usize>>) {
+    let commands: Vec<launcher_domain::Command> = items.into_iter().collect();
+    let (list_rows, row_map) = result_rows(&commands, limit);
+    let items = to_result_items_with_query(commands, limit, query);
+    let mut rows: Vec<ResultItem> = Vec::with_capacity(list_rows.len());
+    for r in &list_rows {
+        match r {
+            ResultListRow::Header(label) => rows.push(ResultItem {
+                command_id: "".into(),
+                title: "".into(),
+                title_before: "".into(),
+                title_match: "".into(),
+                title_after: "".into(),
+                subtitle: "".into(),
+                icon: "".into(),
+                score: "".into(),
+                icon_data: Default::default(),
+                is_header: true,
+                header_label: (*label).into(),
+            }),
+            ResultListRow::Result(idx) => {
+                rows.push(items[*idx].clone());
+            }
+        }
+    }
+    (rows, row_map)
+}
+
+/// One row of the DISPLAY model (P3-I): either a non-selectable section
+/// header or a result row. Headers are a distinct visual component — never
+/// a disabled ResultRow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResultListRow {
+    Header(&'static str),
+    Result(usize),
+}
+
+/// Build the interleaved display model over a ranked result list:
+/// group_sections projects the headers, results keep their ranked order.
+/// Returns the rows plus `row_map` — `row_map[row] = Some(result_idx)` for
+/// result rows, `None` for headers. The keyboard cursor lives in RESULT
+/// space; `result_nav` translates it into row space for rendering.
+pub fn result_rows(
+    commands: &[launcher_domain::Command],
+    limit: usize,
+) -> (Vec<ResultListRow>, Vec<Option<usize>>) {
+    let sections = group_sections(commands);
+    let capped = commands.len().min(limit);
+    let mut rows = Vec::new();
+    let mut row_map = Vec::new();
+    let mut result_idx = 0usize;
+    let mut section_at = 0usize;
+    while result_idx < capped {
+        // emit the header when entering a new section
+        if let Some(sec) = sections.get(section_at) {
+            if sec.start == result_idx {
+                rows.push(ResultListRow::Header(sec.label));
+                row_map.push(None);
+                section_at += 1;
+            }
+        }
+        rows.push(ResultListRow::Result(result_idx));
+        row_map.push(Some(result_idx));
+        result_idx += 1;
+    }
+    (rows, row_map)
+}
+
+/// P3-D/P3-I navigation: move the RESULT cursor by `delta`, then translate
+/// to the display row index. Never lands on a header (they are not in the
+/// cursor space). Returns (result_idx, row_idx).
+pub fn result_nav(
+    row_map: &[Option<usize>],
+    result_count: usize,
+    current_result: usize,
+    delta: i32,
+) -> (usize, usize) {
+    let next = cursor_step(result_count, current_result, delta);
+    let row = row_map
+        .iter()
+        .position(|r| *r == Some(next))
+        .unwrap_or(row_map.len().saturating_sub(1));
+    (next, row)
+}
+
+/// Row index of a result index (Home/End/selection restore).
+pub fn row_of_result(row_map: &[Option<usize>], result_idx: usize) -> usize {
+    row_map
+        .iter()
+        .position(|r| *r == Some(result_idx))
+        .unwrap_or(0)
 }
 
 /// Project a command's resolved actions into presentation items, preserving
@@ -124,6 +308,154 @@ pub fn to_action_presentations(cmd: &launcher_domain::Command) -> Vec<ActionPres
 mod tests {
     use super::*;
     use launcher_domain::{Action, ActionKind, ActionPayload, Category, Command};
+
+    // ---- P3-D: grouping + focus model ----
+
+    fn result(id: &str, category: Category) -> Command {
+        Command {
+            id: id.into(),
+            title: id.into(),
+            subtitle: None,
+            icon: None,
+            provider_id: "test".into(),
+            score: 0.0,
+            keywords: vec![],
+            category,
+            actions: vec![],
+            target: None,
+        }
+    }
+
+    /// P3-D focus model: headers are a projection — the flat cursor walk
+    /// over ranked results yields A1→A2→B1→B2 (never a header index).
+    #[test]
+    fn p3d_cursor_walk_skips_headers() {
+        let ranked = vec![
+            result("A1", Category::Application),
+            result("A2", Category::Application),
+            result("B1", Category::Plugin),
+            result("B2", Category::Plugin),
+        ];
+        let sections = group_sections(&ranked);
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].label, "Applications");
+        assert_eq!(sections[0].start, 0);
+        assert_eq!(sections[0].len, 2);
+        assert_eq!(sections[1].label, "Plugins");
+        assert_eq!(sections[1].start, 2);
+        // flat cursor walk = results only, in ranked order
+        let mut idx = 0usize;
+        let mut walk: Vec<&str> = Vec::new();
+        for _ in 0..ranked.len() {
+            walk.push(ranked[idx].id.as_str());
+            idx = cursor_step(ranked.len(), idx, 1);
+        }
+        assert_eq!(walk, ["A1", "A2", "B1", "B2"]);
+    }
+
+    /// P3-D: single group → headers suppressed (empty vec).
+    #[test]
+    fn p3d_single_group_hides_header() {
+        let one = vec![
+            result("a", Category::Application),
+            result("b", Category::Application),
+        ];
+        assert!(group_sections(&one).is_empty());
+        assert!(group_sections(&[]).is_empty());
+    }
+
+    /// P3-D reject condition: grouping NEVER re-orders ranked results —
+    /// interleaved categories stay in ranked order, cut into runs.
+    #[test]
+    fn p3d_grouping_preserves_ranked_order() {
+        let ranked = vec![
+            result("app1", Category::Application),
+            result("file1", Category::File),
+            result("app2", Category::Application),
+        ];
+        let sections = group_sections(&ranked);
+        let covered: Vec<usize> = sections
+            .iter()
+            .flat_map(|s| s.start..s.end())
+            .collect();
+        assert_eq!(covered, (0..3).collect::<Vec<_>>(), "runs tile the list");
+        assert_eq!(ranked[covered[0]].id, "app1");
+        assert_eq!(ranked[covered[1]].id, "file1");
+        assert_eq!(ranked[covered[2]].id, "app2");
+    }
+
+    // ---- P3-I: interleaved row model + result-space navigation ----
+
+    fn p3i_row(id: &str, category: Category) -> Command {
+        result(id, category)
+    }
+
+    /// Headers interleave at section starts; every result keeps its row.
+    #[test]
+    fn p3i_rows_interleave_headers_and_results() {
+        let ranked = vec![
+            p3i_row("A1", Category::Application),
+            p3i_row("A2", Category::Application),
+            p3i_row("B1", Category::Plugin),
+            p3i_row("B2", Category::Plugin),
+        ];
+        let (rows, map) = result_rows(&ranked, 50);
+        assert_eq!(rows.len(), 6, "2 headers + 4 results");
+        assert_eq!(map.len(), 6);
+        assert_eq!(rows[0], ResultListRow::Header("Applications"));
+        assert_eq!(rows[1], ResultListRow::Result(0));
+        assert_eq!(rows[2], ResultListRow::Result(1));
+        assert_eq!(rows[3], ResultListRow::Header("Plugins"));
+        assert_eq!(rows[4], ResultListRow::Result(2));
+        assert_eq!(rows[5], ResultListRow::Result(3));
+    }
+
+    /// THE focus-model guarantee, end to end: navigating by rows via
+    /// result_nav lands ONLY on result rows (A1→A2→B1→B2), never headers.
+    #[test]
+    fn p3i_nav_skips_headers() {
+        let ranked = vec![
+            p3i_row("A1", Category::Application),
+            p3i_row("A2", Category::Application),
+            p3i_row("B1", Category::Plugin),
+            p3i_row("B2", Category::Plugin),
+        ];
+        let (rows, map) = result_rows(&ranked, 50);
+        let mut idx = 0usize;
+        let mut visited = Vec::new();
+        for _ in 0..ranked.len() {
+            visited.push(match rows[row_of_result(&map, idx)] {
+                ResultListRow::Result(i) => ranked[i].id.clone(),
+                ResultListRow::Header(_) => "<HEADER>".to_string(),
+            });
+            let (next, _row) = result_nav(&map, ranked.len(), idx, 1);
+            idx = next;
+        }
+        assert_eq!(visited, ["A1", "A2", "B1", "B2"]);
+    }
+
+    /// Limit truncation applies to RESULTS; a header never dangles.
+    #[test]
+    fn p3i_row_limit_respects_results() {
+        let ranked = vec![
+            p3i_row("A1", Category::Application),
+            p3i_row("B1", Category::Plugin),
+            p3i_row("B2", Category::Plugin),
+        ];
+        let (rows, map) = result_rows(&ranked, 2);
+        assert_eq!(map.iter().filter(|r| r.is_some()).count(), 2);
+        assert_eq!(rows.len(), 4, "header+result per section (limit = results)");
+    }
+
+    /// cursor_step is bounded and deterministic (P3-D: no ambiguity).
+    #[test]
+    fn p3d_cursor_step_bounds() {
+        assert_eq!(cursor_step(4, 0, 1), 1);
+        assert_eq!(cursor_step(4, 3, 1), 3, "End-clamped");
+        assert_eq!(cursor_step(4, 0, -1), 0);
+        assert_eq!(cursor_step(4, 0, 99), 3);
+        assert_eq!(cursor_step(0, 0, 1), 0);
+    }
 
     fn cmd(actions: Vec<Action>) -> Command {
         Command {
@@ -407,8 +739,14 @@ pub fn agent_run_view(agent: &viewmodel::AgentView) -> WorkflowRunView {
         .map(|p| {
             format!(
                 "⚙ proposed {} · {} · {}{}",
-                p.provider, p.command, p.input_summary,
-                if p.confirmation_required { " · confirmation required" } else { "" }
+                p.provider,
+                p.command,
+                p.input_summary,
+                if p.confirmation_required {
+                    " · confirmation required"
+                } else {
+                    ""
+                }
             )
         })
         .collect();

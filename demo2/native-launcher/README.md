@@ -62,6 +62,63 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
 ```
 
+## POST-CLEANUP VERIFICATION（Agent 通用规则，强制）
+
+任何 formatter / cleanup / revert 操作（含 `cargo fmt`、`rustfmt`、
+`git checkout --`、`git restore`）之后，必须依次完成；任一步失败不得报告
+PASS：
+
+1. `git diff --name-only` + `git status --short` 逐行核对。
+2. 本 Task 的 Required Files **仍然存在于 diff**（测试通过 ≠ 功能改动仍在）。
+3. Forbidden Paths **没有**出现在 diff 中。
+4. 无关文件只允许精确 hunk 级 revert（`git checkout -p` / 手工 Edit），
+   **禁止按文件名批量 `git checkout --`**——它会把同文件/相邻文件的功能改动
+   一并还原。
+5. 重新 `cargo test`（触及 crate）+ `check_topology.py`。
+6. 最终 `git diff` 审计并在 Completion Report 附 `git diff --stat`。
+
+## FEATURE PRESENCE VERIFICATION（P3-J 最终门组成项）
+
+历史教训：一次 cleanup revert 曾静默移除已交付的 ADR-0019 功能链，而旧测试
+仍然通过——"tests pass"不是功能仍存在的证据。
+
+P3-J 最终门由三类门构成，PASS 为七项**合取**：
+
+```text
+                 P3-J
+                   │
+     ┌─────────────┼─────────────┐
+     ▼             ▼             ▼
+   Static        Dynamic       Visual
+     │             │             │
+  ┌──┴───┐         │         ┌───┼───┐
+  ▼      ▼         ▼         ▼   ▼   ▼
+Feature Topology VR        Tests A11y Scenarios
+Presence + Diff + Diff
+```
+
+```text
+PASS =
+    Tests            (0 failures)
+  ∧ Clippy           (0 warnings in touched crates)
+  ∧ Topology         (18 crates + 9 apps)
+  ∧ Forbidden Diff   (= 0)
+  ∧ Required Diff    (valid)
+  ∧ Feature Presence (= 100%)
+  ∧ VR               (PASS / explicitly evidenced)
+  ∧ Integration Scenarios
+```
+
+```bash
+python scripts/check_feature_presence.py   # 逐任务 grep 必需符号，缺失即 fail
+```
+
+该脚本按任务（P3-B..I、ADR-0019）登记每个交付物的必需符号（键位回调、
+状态机变体、权重字段、Core API、托盘入口等）。新增交付物必须同步登记新
+检查项；任何 refactor 重命名后必须先更新本脚本再提交。
+Static 回答"声称交付的功能源码里是否仍存在"，Dynamic（tests）回答"既有
+行为是否仍成立"——两者缺一不可。
+
 ## Run
 
 ```bash

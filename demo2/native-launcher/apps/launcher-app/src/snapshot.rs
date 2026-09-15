@@ -211,6 +211,8 @@ pub fn push_demo_data(ui: &launcher_ui::AppWindow) {
             title_before: String::new().into(),
             title_match: String::new().into(),
             title_after: String::new().into(),
+            is_header: false,
+            header_label: String::new().into(),
         })
         .collect();
     ui.set_results(slint::ModelRc::new(std::rc::Rc::new(

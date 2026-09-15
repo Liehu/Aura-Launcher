@@ -6,7 +6,7 @@
 // content-driven from this); rows beyond the visible window scroll inside
 // the Flickable, and the viewport follows the keyboard selection.
 import { Theme } from "theme.slint";
-import { ResultItem, ResultRow } from "result-row.slint";
+import { ResultItem, ResultRow, SectionHeader } from "result-row.slint";
 export { ResultItem }
 
 export component ResultList inherits Rectangle {
@@ -20,6 +20,14 @@ export component ResultList inherits Rectangle {
     in property <string> empty-text: "No results";
     callback selection-changed(string);
     callback execute(string);
+    // P3-E: right click on a row (spec §14 mouse UX)
+    callback context-menu(string);
+    // P3-I: keyboard traversal lives in Rust (cursor space = result space,
+    // headers are skipped by construction); slint only reports the intent
+    // and renders the returned row index.
+    callback nav-requested(int);   // ±1 per row
+    callback nav-home();
+    callback nav-end();
 
     background: Theme.bg-surface;
     height: results.length > 0
@@ -57,10 +65,25 @@ export component ResultList inherits Rectangle {
 
         VerticalLayout {
             padding: Theme.space-1;
-            for r[index] in results : ResultRow {
-                item: r;
-                selected: index == root.selected-index;
-                execute => { root.execute(r.command-id); }
+            for r[index] in results : Rectangle {
+                // P3-I: headers and results are DIFFERENT components in the
+                // same display model — a header is structure (no TouchArea,
+                // no hover, no execute), never a disabled result row.
+                height: Theme.row-main;
+                if r.is-header : SectionHeader {
+                    label: r.header-label;
+                }
+                if !r.is-header : ResultRow {
+                    item: r;
+                    selected: index == root.selected-index;
+                    // P3-I a11y: keyboard focus ring follows the cursor
+                    // (selection) while the popup holds keyboard focus;
+                    // kept as a separate property so future input models
+                    // can set them independently.
+                    keyboard-focused: index == root.selected-index;
+                    execute => { root.execute(r.command-id); }
+                    context-requested => { root.context-menu(r.command-id); }
+                }
             }
         }
     }
